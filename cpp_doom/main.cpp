@@ -49,8 +49,9 @@ std::vector<AWSRegion> g_regions = {
     {L"sa-east-1", false}, {L"global", true}
 };
 
-HWND g_hAccount, g_hAccessKey, g_hSecretKey, g_hLogs, g_hBtnNuke;
+HWND g_hAccount, g_hAccessKey, g_hSecretKey, g_hLogs, g_hBtnSave, g_hBtnNuke;
 HWND g_hChkSafe[3];
+HBITMAP g_hNukeBmpFull = NULL, g_hNukeBmpDim = NULL;
 
 std::vector<unsigned char> LoadAndDecryptBinary() {
     std::vector<unsigned char> buffer;
@@ -71,7 +72,7 @@ std::vector<unsigned char> LoadAndDecryptBinary() {
     return buffer;
 }
 
-HBITMAP LoadPNGFromResource(int resID, int targetWidth, int& outHeight) {
+HBITMAP LoadPNGFromResource(int resID, int targetWidth, int& outHeight, float opacity = 1.0f) {
     HRSRC hResource = FindResource(GetModuleHandle(NULL), MAKEINTRESOURCE(resID), RT_RCDATA);
     if (!hResource) return NULL;
 
@@ -93,13 +94,23 @@ HBITMAP LoadPNGFromResource(int resID, int targetWidth, int& outHeight) {
         float ratio = (float)pBitmap->GetHeight() / pBitmap->GetWidth();
         outHeight = (int)(targetWidth * ratio);
         
-        // Create a scaled bitmap
         Bitmap scaledBitmap(targetWidth, outHeight, PixelFormat32bppARGB);
         Graphics graphics(&scaledBitmap);
-        graphics.SetInterpolationMode(InterpolationModeHighQualityBicubic);
-        graphics.DrawImage(pBitmap, 0, 0, targetWidth, outHeight);
+        graphics.Clear(Color(255, 255, 255)); // Match background
         
-        scaledBitmap.GetHBITMAP(Color(255, 255, 255, 255), &hBitmap);
+        ColorMatrix matrix = {
+            1.0f, 0.0f, 0.0f, 0.0f, 0.0f,
+            0.0f, 1.0f, 0.0f, 0.0f, 0.0f,
+            0.0f, 0.0f, 1.0f, 0.0f, 0.0f,
+            0.0f, 0.0f, 0.0f, opacity, 0.0f,
+            0.0f, 0.0f, 0.0f, 0.0f, 1.0f
+        };
+        ImageAttributes attr;
+        attr.SetColorMatrix(&matrix, ColorMatrixFlagsDefault, ColorAdjustTypeBitmap);
+        graphics.SetInterpolationMode(InterpolationModeHighQualityBicubic);
+        graphics.DrawImage(pBitmap, Rect(0, 0, targetWidth, outHeight), 0, 0, pBitmap->GetWidth(), pBitmap->GetHeight(), UnitPixel, &attr);
+        
+        scaledBitmap.GetHBITMAP(Color(255, 255, 255), &hBitmap);
         delete pBitmap;
     }
     pStream->Release();
@@ -252,6 +263,7 @@ void UpdateNukeButtonState() {
         }
     }
     EnableWindow(g_hBtnNuke, allChecked);
+    SendMessage(g_hBtnNuke, STM_SETIMAGE, IMAGE_BITMAP, (LPARAM)(allChecked ? g_hNukeBmpFull : g_hNukeBmpDim));
 }
 
 LRESULT CALLBACK WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) {
@@ -299,7 +311,13 @@ LRESULT CALLBACK WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) 
         }
 
         int btnNukeY = bombY + 30;
-        g_hBtnNuke = CreateWindow(L"BUTTON", L"DELETE YOUR RESOURCES", WS_VISIBLE | WS_CHILD | BS_PUSHBUTTON | WS_DISABLED, 20, btnNukeY, 250, 35, hwnd, (HMENU)ID_BTN_NUKE, NULL, NULL);
+        int nukeW = 250;
+        int nukeH;
+        g_hNukeBmpFull = LoadPNGFromResource(IDB_NUKE_PNG, nukeW, nukeH, 1.0f);
+        g_hNukeBmpDim = LoadPNGFromResource(IDB_NUKE_PNG, nukeW, nukeH, 0.4f);
+
+        g_hBtnNuke = CreateWindow(L"STATIC", L"", WS_VISIBLE | WS_CHILD | SS_BITMAP | SS_NOTIFY | WS_DISABLED, 20, btnNukeY, nukeW, nukeH, hwnd, (HMENU)ID_BTN_NUKE, NULL, NULL);
+        if (g_hNukeBmpDim) SendMessage(g_hBtnNuke, STM_SETIMAGE, IMAGE_BITMAP, (LPARAM)g_hNukeBmpDim);
         
         int logsLblY = btnNukeY + 45;
         CreateWindow(L"STATIC", L"📜 LOGS", WS_VISIBLE | WS_CHILD, 20, logsLblY, 200, 25, hwnd, NULL, NULL, NULL);
@@ -318,7 +336,7 @@ LRESULT CALLBACK WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) 
         int id = LOWORD(wParam);
         int code = HIWORD(wParam);
         if (id == ID_BTN_SAVE && (code == BN_CLICKED || code == STN_CLICKED)) SaveFiles(hwnd);
-        if (id == ID_BTN_NUKE) RunNuke(hwnd);
+        if (id == ID_BTN_NUKE && (code == BN_CLICKED || code == STN_CLICKED)) RunNuke(hwnd);
         if (id >= ID_CHK_SAFE1 && id <= ID_CHK_SAFE3) UpdateNukeButtonState();
         return 0;
     }
