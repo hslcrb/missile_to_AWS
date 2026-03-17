@@ -443,7 +443,7 @@ LRESULT CALLBACK WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) 
 
         // Region selection group box
         int groupY = startY + 95; 
-        int groupH = 160;
+        int groupH = 200; // Increased to prevent overlapping
         CreateWindow(L"BUTTON", L"리소스를 삭제할 리전을 선택해주세요", WS_VISIBLE | WS_CHILD | BS_GROUPBOX, 15, groupY, 750, groupH, hwnd, NULL, NULL, NULL);
 
         int columns = 3;
@@ -452,13 +452,13 @@ LRESULT CALLBACK WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) 
             int col = i / itemsPerColumn;
             int row = i % itemsPerColumn;
             int x = 40 + (col * 200); // Narrower horizontal spacing
-            int y = groupY + 30 + (row * 24); // Slightly more vertical space for better alignment
+            int y = groupY + 35 + (row * 24); // Shifted down slightly inside group
             // Use BS_OWNERDRAW for custom rich-text rendering
             g_regions[i].hwnd = CreateWindow(L"BUTTON", g_regions[i].name.c_str(), WS_VISIBLE | WS_CHILD | BS_OWNERDRAW, x, y, 180, 24, hwnd, (HMENU)(ID_CHK_REGION_START + i), NULL, NULL);
         }
 
         // --- Optimized Section: SAVE, BOMB, NUKE ---
-        int saveY = groupY + groupH + 10; 
+        int saveY = groupY + groupH + 15; 
         int targetW_Save = 110; // Enlarge Save button
         int saveH;
         HBITMAP hSaveBmp = LoadPNGFromResource(IDB_SAVE_PNG, targetW_Save, saveH);
