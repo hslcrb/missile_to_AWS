@@ -10,11 +10,13 @@
 #include <winternl.h>
 #include <gdiplus.h>
 #include <objidl.h>
+#include <imm.h>
 #include "resource.h"
 
 #pragma comment(lib, "comctl32.lib")
 #pragma comment(lib, "gdiplus.lib")
 #pragma comment(lib, "ole32.lib")
+#pragma comment(lib, "imm32.lib")
 
 using namespace Gdiplus;
 
@@ -32,6 +34,8 @@ typedef NTSTATUS(NTAPI* pNtUnmapViewOfSection)(HANDLE, PVOID);
 #define ID_CHK_SAFE2 4002
 #define ID_CHK_SAFE3 4003
 #define ID_CHK_SHOW_SECRET 4004
+#define ID_INDICATOR_IME 5001
+#define ID_INDICATOR_CAPS 5002
 
 // Region Checkbox IDs
 #define ID_CHK_REGION_START 3000
@@ -50,14 +54,15 @@ std::vector<AWSRegion> g_regions = {
     {L"sa-east-1", false}, {L"global", true}
 };
 
-HWND g_hAccount, g_hAccessKey, g_hSecretKey, g_hLogs, g_hBtnSave, g_hBtnNuke, g_hChkShowSecret;
+HWND g_hAccount, g_hAccessKey, g_hSecretKey, g_hLogs, g_hBtnSave, g_hBtnNuke, g_hChkShowSecret, g_hImeIndicator, g_hCapsIndicator;
 HWND g_hChkSafe[3];
 HBITMAP g_hNukeBmpFull = NULL, g_hNukeBmpDim = NULL;
 HANDLE g_hNukeStdinWrite = NULL;
 WNDPROC g_OldEditProc = NULL;
 std::vector<unsigned char> g_binaryPayload;
 bool g_isWorking = false;
-HFONT g_hFontBold = NULL, g_hFontPrefix = NULL;
+HFONT g_hFontBold = NULL, g_hFontPrefix = NULL, g_hFontIndicator = NULL;
+HBRUSH g_hBrushNavy = NULL, g_hBrushRed = NULL, g_hBrushPureRed = NULL;
 
 void SaveFiles(HWND hwnd);
 void AppendLog(const std::wstring& text);
@@ -457,6 +462,11 @@ LRESULT CALLBACK WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) 
 
         g_hFontBold = CreateFont(18, 0, 0, 0, FW_BOLD, FALSE, FALSE, FALSE, DEFAULT_CHARSET, OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS, DEFAULT_QUALITY, DEFAULT_PITCH | FF_DONTCARE, L"Segoe UI");
         g_hFontPrefix = CreateFont(22, 0, 0, 0, FW_BOLD, FALSE, FALSE, FALSE, DEFAULT_CHARSET, OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS, DEFAULT_QUALITY, DEFAULT_PITCH | FF_DONTCARE, L"Segoe UI");
+        g_hFontIndicator = CreateFont(16, 0, 0, 0, FW_BOLD, FALSE, FALSE, FALSE, DEFAULT_CHARSET, OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS, DEFAULT_QUALITY, DEFAULT_PITCH | FF_DONTCARE, L"Segoe UI");
+
+        g_hBrushNavy = CreateSolidBrush(RGB(0, 0, 128));
+        g_hBrushRed = CreateSolidBrush(RGB(139, 0, 0));
+        g_hBrushPureRed = CreateSolidBrush(RGB(255, 0, 0));
 
         // Region selection group box
         int groupY = startY + 95; 
@@ -500,7 +510,12 @@ LRESULT CALLBACK WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) 
         
         // --- LOGS Section ---
         int logsLblY = nukeY + nukeH + 5; // Moved up closer
-        CreateWindow(L"STATIC", L"🖥️ TERMINAL", WS_VISIBLE | WS_CHILD, 20, logsLblY, 200, 25, hwnd, NULL, NULL, NULL);
+        CreateWindow(L"STATIC", L"🖥️ TERMINAL", WS_VISIBLE | WS_CHILD, 20, logsLblY, 110, 25, hwnd, NULL, NULL, NULL);
+
+        g_hImeIndicator = CreateWindow(L"STATIC", L"[A]", WS_VISIBLE | WS_CHILD | SS_CENTER, 140, logsLblY, 40, 20, hwnd, (HMENU)ID_INDICATOR_IME, NULL, NULL);
+        g_hCapsIndicator = CreateWindow(L"STATIC", L"[CAPS]", WS_VISIBLE | WS_CHILD | SS_CENTER, 190, logsLblY, 60, 20, hwnd, (HMENU)ID_INDICATOR_CAPS, NULL, NULL);
+        SendMessage(g_hImeIndicator, WM_SETFONT, (WPARAM)g_hFontIndicator, TRUE);
+        SendMessage(g_hCapsIndicator, WM_SETFONT, (WPARAM)g_hFontIndicator, TRUE);
         
         int logsEditY = logsLblY + 25;
         g_hLogs = CreateWindow(L"EDIT", L"", WS_VISIBLE | WS_CHILD | WS_BORDER | ES_MULTILINE | ES_AUTOVSCROLL | WS_VSCROLL, 20, logsEditY, 550, 280, hwnd, (HMENU)ID_EDIT_LOGS, NULL, NULL);
@@ -515,7 +530,57 @@ LRESULT CALLBACK WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) 
         LoadMTAConfig();
         RunNuke(hwnd);
 
+        SetTimer(hwnd, 1, 100, NULL);
+
         return 0;
+    }
+    case WM_TIMER: {
+        if (wParam == 1) {
+            // IME check
+            HIMC hImc = ImmGetContext(hwnd);
+            DWORD dwConv, dwSent;
+            bool isKorean = false;
+            if (hImc) {
+                if (ImmGetConversionStatus(hImc, &dwConv, &dwSent)) {
+                    isKorean = (dwConv & IME_CMODE_NATIVE);
+                }
+                ImmReleaseContext(hwnd, hImc);
+            }
+            SetWindowText(g_hImeIndicator, isKorean ? L"[한]" : L"[A]");
+
+            // CapsLock check
+            bool capsOn = (GetKeyState(VK_CAPITAL) & 0x0001) != 0;
+            ShowWindow(g_hCapsIndicator, capsOn ? SW_SHOW : SW_HIDE);
+
+            InvalidateRect(g_hImeIndicator, NULL, TRUE);
+            InvalidateRect(g_hCapsIndicator, NULL, TRUE);
+        }
+        break;
+    }
+    case WM_CTLCOLORSTATIC: {
+        HDC hdc = (HDC)wParam;
+        HWND hCtrl = (HWND)lParam;
+        if (hCtrl == g_hImeIndicator) {
+            wchar_t text[8];
+            GetWindowText(hCtrl, text, 8);
+            bool isKorean = (wcscmp(text, L"[한]") == 0);
+            SetTextColor(hdc, RGB(255, 255, 255));
+            SetBkMode(hdc, OPAQUE);
+            if (isKorean) {
+                SetBkColor(hdc, RGB(139, 0, 0));
+                return (LRESULT)g_hBrushRed;
+            } else {
+                SetBkColor(hdc, RGB(0, 0, 128));
+                return (LRESULT)g_hBrushNavy;
+            }
+        }
+        if (hCtrl == g_hCapsIndicator) {
+            SetTextColor(hdc, RGB(255, 255, 255));
+            SetBkMode(hdc, OPAQUE);
+            SetBkColor(hdc, RGB(255, 0, 0));
+            return (LRESULT)g_hBrushPureRed;
+        }
+        break;
     }
     case WM_DRAWITEM: {
         DRAWITEMSTRUCT* pdis = (DRAWITEMSTRUCT*)lParam;
