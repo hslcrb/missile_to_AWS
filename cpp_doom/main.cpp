@@ -421,12 +421,12 @@ LRESULT CALLBACK WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) 
         HFONT hFont = CreateFont(18, 0, 0, 0, FW_NORMAL, FALSE, FALSE, FALSE, DEFAULT_CHARSET, OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS, DEFAULT_QUALITY, DEFAULT_PITCH | FF_DONTCARE, L"Segoe UI");
 
         int mtaH;
-        int mtaW = 220; // Enlarged as requested
+        int mtaW = 180; // Slightly smaller as requested
         HBITMAP hMtaBmp = LoadPNGFromResource(IDB_MTA_PNG, mtaW, mtaH);
         HWND hMta = CreateWindow(L"STATIC", L"", WS_VISIBLE | WS_CHILD | SS_BITMAP, 20, 15, mtaW, mtaH, hwnd, NULL, NULL, NULL);
         if (hMtaBmp) SendMessage(hMta, STM_SETIMAGE, IMAGE_BITMAP, (LPARAM)hMtaBmp);
 
-        int startY = 85; // Shifted down to accommodate larger header
+        int startY = 75; // Adjusted spacing for smaller header
         CreateWindow(L"STATIC", L"Account-ID :", WS_VISIBLE | WS_CHILD, 20, startY, 150, 20, hwnd, NULL, NULL, NULL);
         g_hAccount = CreateWindow(L"EDIT", L"", WS_VISIBLE | WS_CHILD | WS_BORDER, 180, startY - 2, 200, 22, hwnd, (HMENU)ID_EDIT_ACCOUNT, NULL, NULL);
 
