@@ -1,0 +1,8 @@
+붐 돌리는법
+1.붐을 켠다
+2.Account-ID -자신의 aws id적는다
+3.보안 자격증명에 들어간다
+4.액새스키 생성 -> 생성
+5.AWS-ACCESS-KEY-ID , AWS-SECRET-ACCESS-KEY 붙혀넣기
+6.seve하고 나서 boom
+7.다 돌아가면 화면에 뜸
