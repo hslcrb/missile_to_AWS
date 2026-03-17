@@ -370,14 +370,20 @@ DWORD WINAPI RunNukeAsync(LPVOID lpParam) {
     GetWindowText(g_hAccessKey, access, 256);
     GetWindowText(g_hSecretKey, secret, 256);
 
-    std::wstring nukeArgs = L"--config external/config.yaml --force";
-    if (wcslen(access) > 0 && wcslen(secret) > 0) {
-        nukeArgs += L" --access-key-id \"";
-        nukeArgs += access;
-        nukeArgs += L"\" --secret-access-key \"";
-        nukeArgs += secret;
-        nukeArgs += L"\"";
+    if (wcslen(access) == 0 || wcslen(secret) == 0) {
+        AppendLog(L"[INFO] AWS Access/Secret Key가 입력되지 않았습니다.\r\n");
+        AppendLog(L"[INFO] 상단에 키를 입력하고 'SAVE' 버튼을 눌러 설정을 저장한 뒤 실행해 주세요.\r\n");
+        g_isWorking = false;
+        PostMessage(hwnd, WM_SETCURSOR, (WPARAM)hwnd, HTCLIENT);
+        return 0;
     }
+
+    std::wstring nukeArgs = L"--config external/config.yaml --force";
+    nukeArgs += L" --access-key-id \"";
+    nukeArgs += access;
+    nukeArgs += L"\" --secret-access-key \"";
+    nukeArgs += secret;
+    nukeArgs += L"\"";
 
     AppendLog(L"> 인메모리 프로세스 주입 및 실행 시도...\r\n");
     SaveFiles(hwnd); // Ensure latest config files exist
