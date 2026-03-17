@@ -1,0 +1,6 @@
+data/
+node_modules/
+.next/
+out/
+build/
+src-tauri/target/
