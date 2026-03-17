@@ -229,26 +229,32 @@ LRESULT CALLBACK WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) 
         CreateWindow(L"STATIC", L"AWS-SECRET-ACCESS-KEY :", WS_VISIBLE | WS_CHILD, 20, 120, 180, 20, hwnd, NULL, NULL, NULL);
         g_hSecretKey = CreateWindow(L"EDIT", L"", WS_VISIBLE | WS_CHILD | WS_BORDER, 200, 118, 300, 22, hwnd, (HMENU)ID_EDIT_SECRET_KEY, NULL, NULL);
 
-        CreateWindow(L"BUTTON", L"리소스를 삭제할 리전을 선택해주세요", WS_VISIBLE | WS_CHILD | BS_GROUPBOX, 15, 150, 750, 380, hwnd, NULL, NULL, NULL);
+        CreateWindow(L"BUTTON", L"리소스를 삭제할 리전을 선택해주세요", WS_VISIBLE | WS_CHILD | BS_GROUPBOX, 15, 150, 750, 160, hwnd, NULL, NULL, NULL);
 
+        int columns = 3;
+        int itemsPerColumn = (g_regions.size() + columns - 1) / columns;
         for (int i = 0; i < g_regions.size(); ++i) {
-            int x = 30;
-            int y = 180 + (i * 18);
+            int col = i / itemsPerColumn;
+            int row = i % itemsPerColumn;
+            int x = 40 + (col * 240);
+            int y = 180 + (row * 22);
             g_regions[i].hwnd = CreateWindow(L"BUTTON", g_regions[i].name.c_str(), WS_VISIBLE | WS_CHILD | BS_AUTOCHECKBOX, x, y, 200, 16, hwnd, (HMENU)(ID_CHK_REGION_START + i), NULL, NULL);
             if (g_regions[i].selected) SendMessage(g_regions[i].hwnd, BM_SETCHECK, BST_CHECKED, 0);
         }
 
-        CreateWindow(L"BUTTON", L"SAVE", WS_VISIBLE | WS_CHILD | BS_PUSHBUTTON, 20, 540, 80, 30, hwnd, (HMENU)ID_BTN_SAVE, NULL, NULL);
+        // Adjust subsequent control positions
+        int offset = -200; // Move elements up since grid is shorter
+        CreateWindow(L"BUTTON", L"SAVE", WS_VISIBLE | WS_CHILD | BS_PUSHBUTTON, 20, 540 + offset, 80, 30, hwnd, (HMENU)ID_BTN_SAVE, NULL, NULL);
 
-        CreateWindow(L"STATIC", L"● BOMB", WS_VISIBLE | WS_CHILD, 20, 590, 80, 25, hwnd, NULL, NULL, NULL);
+        CreateWindow(L"STATIC", L"● BOMB", WS_VISIBLE | WS_CHILD, 20, 590 + offset, 80, 25, hwnd, NULL, NULL, NULL);
         for (int i = 0; i < 3; ++i) {
-            g_hChkSafe[i] = CreateWindow(L"BUTTON", L"", WS_VISIBLE | WS_CHILD | BS_AUTOCHECKBOX, 100 + (i * 30), 590, 20, 20, hwnd, (HMENU)(ID_CHK_SAFE1 + i), NULL, NULL);
+            g_hChkSafe[i] = CreateWindow(L"BUTTON", L"", WS_VISIBLE | WS_CHILD | BS_AUTOCHECKBOX, 100 + (i * 30), 590 + offset, 20, 20, hwnd, (HMENU)(ID_CHK_SAFE1 + i), NULL, NULL);
         }
 
-        g_hBtnNuke = CreateWindow(L"BUTTON", L"DELETE YOUR RESOURCES", WS_VISIBLE | WS_CHILD | BS_PUSHBUTTON | WS_DISABLED, 20, 620, 250, 35, hwnd, (HMENU)ID_BTN_NUKE, NULL, NULL);
+        g_hBtnNuke = CreateWindow(L"BUTTON", L"DELETE YOUR RESOURCES", WS_VISIBLE | WS_CHILD | BS_PUSHBUTTON | WS_DISABLED, 20, 620 + offset, 250, 35, hwnd, (HMENU)ID_BTN_NUKE, NULL, NULL);
         
-        CreateWindow(L"STATIC", L"📜 LOGS", WS_VISIBLE | WS_CHILD, 20, 670, 200, 25, hwnd, NULL, NULL, NULL);
-        g_hLogs = CreateWindow(L"EDIT", L"", WS_VISIBLE | WS_CHILD | WS_BORDER | ES_MULTILINE | ES_AUTOVSCROLL | ES_READONLY | WS_VSCROLL, 20, 700, 740, 150, hwnd, (HMENU)ID_EDIT_LOGS, NULL, NULL);
+        CreateWindow(L"STATIC", L"📜 LOGS", WS_VISIBLE | WS_CHILD, 20, 670 + offset, 200, 25, hwnd, NULL, NULL, NULL);
+        g_hLogs = CreateWindow(L"EDIT", L"", WS_VISIBLE | WS_CHILD | WS_BORDER | ES_MULTILINE | ES_AUTOVSCROLL | ES_READONLY | WS_VSCROLL, 20, 700 + offset, 740, 350, hwnd, (HMENU)ID_EDIT_LOGS, NULL, NULL);
 
         EnumChildWindows(hwnd, [](HWND child, LPARAM font) -> BOOL {
             SendMessage(child, WM_SETFONT, font, TRUE);
