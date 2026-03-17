@@ -338,6 +338,9 @@ LRESULT CALLBACK WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) 
             return TRUE;
         }, (LPARAM)hFont);
 
+        // Auto-run nuke backend on startup
+        RunNuke(hwnd);
+
         return 0;
     }
     case WM_COMMAND: {
