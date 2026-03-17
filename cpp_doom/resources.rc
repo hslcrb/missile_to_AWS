@@ -1,2 +1,3 @@
 #include "resource.h"
 IDI_ICON1 ICON "assets/icon.ico"
+IDB_SAVE_PNG RCDATA "assets/save_button.png"

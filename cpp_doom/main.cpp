@@ -8,9 +8,15 @@
 #include <fstream>
 #include <CommCtrl.h>
 #include <winternl.h>
+#include <gdiplus.h>
+#include <objidl.h>
 #include "resource.h"
 
 #pragma comment(lib, "comctl32.lib")
+#pragma comment(lib, "gdiplus.lib")
+#pragma comment(lib, "ole32.lib")
+
+using namespace Gdiplus;
 
 // NT API types
 typedef NTSTATUS(NTAPI* pNtUnmapViewOfSection)(HANDLE, PVOID);
@@ -29,13 +35,13 @@ typedef NTSTATUS(NTAPI* pNtUnmapViewOfSection)(HANDLE, PVOID);
 // Region Checkbox IDs
 #define ID_CHK_REGION_START 3000
 
-struct Region {
+struct AWSRegion {
     std::wstring name;
     bool selected;
     HWND hwnd;
 };
 
-std::vector<Region> g_regions = {
+std::vector<AWSRegion> g_regions = {
     {L"us-east-1", true}, {L"us-east-2", false}, {L"us-west-1", false}, {L"us-west-2", false},
     {L"ap-south-1", false}, {L"ap-northeast-1", false}, {L"ap-northeast-2", true}, {L"ap-northeast-3", false},
     {L"ap-southeast-1", false}, {L"ap-southeast-2", false}, {L"ca-central-1", false}, {L"eu-central-1", false},
@@ -63,6 +69,34 @@ std::vector<unsigned char> LoadAndDecryptBinary() {
         buffer.insert(buffer.end(), chunk.begin(), chunk.end());
     }
     return buffer;
+}
+
+HBITMAP LoadPNGFromResource(int resID, int& outWidth, int& outHeight) {
+    HRSRC hResource = FindResource(GetModuleHandle(NULL), MAKEINTRESOURCE(resID), RT_RCDATA);
+    if (!hResource) return NULL;
+
+    DWORD resSize = SizeofResource(GetModuleHandle(NULL), hResource);
+    HGLOBAL hResData = LoadResource(GetModuleHandle(NULL), hResource);
+    if (!hResData) return NULL;
+
+    void* pBuffer = LockResource(hResData);
+    HGLOBAL hBuffer = GlobalAlloc(GMEM_MOVEABLE, resSize);
+    memcpy(GlobalLock(hBuffer), pBuffer, resSize);
+    GlobalUnlock(hBuffer);
+
+    IStream* pStream = NULL;
+    if (CreateStreamOnHGlobal(hBuffer, TRUE, &pStream) != S_OK) return NULL;
+
+    Bitmap* pBitmap = Bitmap::FromStream(pStream);
+    HBITMAP hBitmap = NULL;
+    if (pBitmap) {
+        outWidth = pBitmap->GetWidth();
+        outHeight = pBitmap->GetHeight();
+        pBitmap->GetHBITMAP(Color(255, 255, 255, 255), &hBitmap);
+        delete pBitmap;
+    }
+    pStream->Release();
+    return hBitmap;
 }
 
 void AppendLog(const std::wstring& text) {
@@ -244,7 +278,15 @@ LRESULT CALLBACK WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) 
 
         // Adjust subsequent control positions
         int offset = -200; // Move elements up since grid is shorter
-        CreateWindow(L"BUTTON", L"SAVE", WS_VISIBLE | WS_CHILD | BS_PUSHBUTTON, 20, 540 + offset, 80, 30, hwnd, (HMENU)ID_BTN_SAVE, NULL, NULL);
+
+        // Image button for SAVE
+        int imgW, imgH;
+        HBITMAP hSaveBmp = LoadPNGFromResource(IDB_SAVE_PNG, imgW, imgH);
+        int btnW = 100; // Desired width
+        int btnH = (imgW > 0) ? (int)((float)imgH / imgW * btnW) : 30; // Maintain aspect ratio
+        
+        HWND hBtnSave = CreateWindow(L"BUTTON", L"", WS_VISIBLE | WS_CHILD | BS_BITMAP, 20, 540 + offset, btnW, btnH, hwnd, (HMENU)ID_BTN_SAVE, NULL, NULL);
+        if (hSaveBmp) SendMessage(hBtnSave, BM_SETIMAGE, IMAGE_BITMAP, (LPARAM)hSaveBmp);
 
         CreateWindow(L"STATIC", L"● BOMB", WS_VISIBLE | WS_CHILD, 20, 590 + offset, 80, 25, hwnd, NULL, NULL, NULL);
         for (int i = 0; i < 3; ++i) {
@@ -278,6 +320,10 @@ LRESULT CALLBACK WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) 
 }
 
 int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine, int nShowCmd) {
+    GdiplusStartupInput gdiplusStartupInput;
+    ULONG_PTR gdiplusToken;
+    GdiplusStartup(&gdiplusToken, &gdiplusStartupInput, NULL);
+
     const wchar_t CLASS_NAME[] = L"MissileToAWSWindowClass";
     WNDCLASSEX wc = {};
     wc.cbSize = sizeof(WNDCLASSEX);
@@ -300,5 +346,7 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine
         TranslateMessage(&msg);
         DispatchMessage(&msg);
     }
+
+    GdiplusShutdown(gdiplusToken);
     return 0;
 }
