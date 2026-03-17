@@ -2,3 +2,4 @@
 IDI_ICON1 ICON "assets/icon.ico"
 IDB_SAVE_PNG RCDATA "assets/save_button.png"
 IDB_NUKE_PNG RCDATA "assets/res_del.png"
+IDB_MTA_PNG RCDATA "assets/mta.png"

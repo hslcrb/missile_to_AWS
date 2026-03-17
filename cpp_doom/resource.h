@@ -1,3 +1,4 @@
 #define IDI_ICON1 101
 #define IDB_SAVE_PNG 102
 #define IDB_NUKE_PNG 103
+#define IDB_MTA_PNG 104
