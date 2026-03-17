@@ -34,4 +34,4 @@ def pack_binary(input_file, output_dir, chunk_size=1024*1024*10): # 10MB chunks
 
 if __name__ == "__main__":
     # Adjust paths as needed
-    pack_binary("f:/aws-nuke/new_doom/external/aws-nuke.exe", "f:/aws-nuke/cpp_doom/data")
+    pack_binary("f:/aws-nuke/cpp_doom/aws-nuke.exe", "f:/aws-nuke/cpp_doom/data")
