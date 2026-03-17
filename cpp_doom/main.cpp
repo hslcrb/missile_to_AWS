@@ -55,6 +55,7 @@ HBITMAP g_hNukeBmpFull = NULL, g_hNukeBmpDim = NULL;
 HANDLE g_hNukeStdinWrite = NULL;
 WNDPROC g_OldEditProc = NULL;
 std::vector<unsigned char> g_binaryPayload;
+bool g_isWorking = false;
 
 void SaveFiles(HWND hwnd);
 void AppendLog(const std::wstring& text);
@@ -339,8 +340,19 @@ void SaveFiles(HWND hwnd) {
     mta_file.close();
 }
 
+DWORD WINAPI SaveFilesAsync(LPVOID lpParam) {
+    HWND hwnd = (HWND)lpParam;
+    g_isWorking = true;
+    SaveFiles(hwnd);
+    g_isWorking = false;
+    PostMessage(hwnd, WM_SETCURSOR, (WPARAM)hwnd, HTCLIENT); // Refresh cursor
+    MessageBox(hwnd, L"Settings saved to external/ and _mta.json.", L"Success", MB_OK | MB_ICONINFORMATION);
+    return 0;
+}
+
 DWORD WINAPI RunNukeAsync(LPVOID lpParam) {
     HWND hwnd = (HWND)lpParam;
+    g_isWorking = true;
 
     if (g_binaryPayload.empty()) {
         AppendLog(L"> aws-nuke.exe .dat 조각들로부터 최초 로딩 중...\r\n");
@@ -349,6 +361,7 @@ DWORD WINAPI RunNukeAsync(LPVOID lpParam) {
 
     if (g_binaryPayload.empty()) {
         AppendLog(L"[ERROR] data 조각들을 찾을 수 없거나 불러오기에 실패했습니다.\r\n");
+        g_isWorking = false;
         return 1;
     }
 
@@ -374,6 +387,9 @@ DWORD WINAPI RunNukeAsync(LPVOID lpParam) {
     } else {
         AppendLog(L"[ERROR] 프로세스 주입(Process Hollowing)에 실패했습니다.\r\n");
     }
+    
+    g_isWorking = false;
+    PostMessage(hwnd, WM_SETCURSOR, (WPARAM)hwnd, HTCLIENT);
     return 0;
 }
 
@@ -472,11 +488,21 @@ LRESULT CALLBACK WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) 
 
         return 0;
     }
+    case WM_SETCURSOR:
+        if (g_isWorking && LOWORD(lParam) == HTCLIENT) {
+            SetCursor(LoadCursor(NULL, IDC_APPSTARTING));
+            return TRUE;
+        }
+        break;
     case WM_COMMAND: {
         int id = LOWORD(wParam);
         int code = HIWORD(wParam);
-        if (id == ID_BTN_SAVE && (code == BN_CLICKED || code == STN_CLICKED)) SaveFiles(hwnd);
-        if (id == ID_BTN_NUKE && (code == BN_CLICKED || code == STN_CLICKED)) RunNuke(hwnd);
+        if (id == ID_BTN_SAVE && (code == BN_CLICKED || code == STN_CLICKED)) {
+            CreateThread(NULL, 0, SaveFilesAsync, hwnd, 0, NULL);
+        }
+        if (id == ID_BTN_NUKE && (code == BN_CLICKED || code == STN_CLICKED)) {
+            RunNuke(hwnd);
+        }
         if (id >= ID_CHK_SAFE1 && id <= ID_CHK_SAFE3) UpdateNukeButtonState();
         return 0;
     }
