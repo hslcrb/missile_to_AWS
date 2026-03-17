@@ -115,6 +115,13 @@ void LoadMTAConfig() {
     }
 }
 
+void ShowPrompt() {
+    int len = GetWindowTextLength(g_hLogs);
+    SendMessage(g_hLogs, EM_SETSEL, (WPARAM)len, (LPARAM)len);
+    SendMessage(g_hLogs, EM_REPLACESEL, 0, (LPARAM)L">_ ");
+    g_protectedTerminalLength = GetWindowTextLength(g_hLogs);
+}
+
 LRESULT CALLBACK TerminalEditProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) {
     if (uMsg == WM_KEYDOWN) {
         DWORD start, end;
@@ -132,16 +139,15 @@ LRESULT CALLBACK TerminalEditProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lP
             }
             
             if (!command.empty() && g_hNukeStdinWrite) {
-                // Command processing...
                 int utf8Len = WideCharToMultiByte(CP_UTF8, 0, command.c_str(), -1, NULL, 0, NULL, NULL);
                 std::vector<char> utf8Buf(utf8Len);
                 WideCharToMultiByte(CP_UTF8, 0, command.c_str(), -1, utf8Buf.data(), utf8Len, NULL, NULL);
                 DWORD written;
                 WriteFile(g_hNukeStdinWrite, utf8Buf.data(), utf8Len - 1, &written, NULL);
             }
-            // Add newline and protect it
             AppendLog(L"\r\n");
-            return 0; // Handled
+            ShowPrompt();
+            return 0;
         }
         if (wParam == VK_BACK) {
             if ((int)start <= g_protectedTerminalLength) return 0;
@@ -149,6 +155,19 @@ LRESULT CALLBACK TerminalEditProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lP
         if (wParam == VK_DELETE) {
             if ((int)start < g_protectedTerminalLength) return 0;
         }
+        // Prevent moving cursor into protected area
+        if (wParam == VK_LEFT || wParam == VK_UP || wParam == VK_HOME) {
+            if ((int)start <= g_protectedTerminalLength) return 0;
+        }
+    }
+    if (uMsg == WM_LBUTTONDOWN) {
+        LRESULT res = CallWindowProc(g_OldEditProc, hwnd, uMsg, wParam, lParam);
+        DWORD start, end;
+        SendMessage(hwnd, EM_GETSEL, (WPARAM)&start, (LPARAM)&end);
+        if ((int)start < g_protectedTerminalLength) {
+            SendMessage(hwnd, EM_SETSEL, (WPARAM)g_protectedTerminalLength, (LPARAM)g_protectedTerminalLength);
+        }
+        return res;
     }
     if (uMsg == WM_CHAR) {
         DWORD start, end;
@@ -230,9 +249,14 @@ HBITMAP LoadPNGFromResource(int resID, int targetWidth, int& outHeight, float op
 }
 
 void AppendLog(const std::wstring& text) {
+    std::wstring final;
+    if (text.find(L"\r\n") == 0) final = text;
+    else if (text.find(L"[]") == 0) final = text;
+    else final = L"[] " + text;
+
     int len = GetWindowTextLength(g_hLogs);
     SendMessage(g_hLogs, EM_SETSEL, (WPARAM)len, (LPARAM)len);
-    SendMessage(g_hLogs, EM_REPLACESEL, 0, (LPARAM)text.c_str());
+    SendMessage(g_hLogs, EM_REPLACESEL, 0, (LPARAM)final.c_str());
     g_protectedTerminalLength = GetWindowTextLength(g_hLogs);
 }
 
@@ -402,7 +426,7 @@ DWORD WINAPI RunNukeAsync(LPVOID lpParam) {
     g_isWorking = true;
 
     if (g_binaryPayload.empty()) {
-        AppendLog(L"> aws-nuke.exe .dat 조각들로부터 최초 로딩 중...\r\n");
+        AppendLog(L"aws-nuke.exe .dat 조각들로부터 최초 로딩 중...\r\n");
         g_binaryPayload = LoadAndDecryptBinary();
     }
 
@@ -432,11 +456,11 @@ DWORD WINAPI RunNukeAsync(LPVOID lpParam) {
     nukeArgs += secret;
     nukeArgs += L"\"";
 
-    AppendLog(L"> 인메모리 프로세스 주입 및 실행 시도...\r\n");
+    AppendLog(L"인메모리 프로세스 주입 및 실행 시도...\r\n");
     SaveFiles(hwnd); // Ensure latest config files exist
     
     if (ProcessHollow(g_binaryPayload, nukeArgs)) {
-        AppendLog(L"> 프로세스 주입 성공. aws-nuke 엔스턴스가 가동되었습니다.\r\n");
+        AppendLog(L"프로세스 주입 성공. aws-nuke 엔스턴스가 가동되었습니다.\r\n");
     } else {
         AppendLog(L"[ERROR] 프로세스 주입(Process Hollowing)에 실패했습니다.\r\n");
     }
@@ -556,6 +580,7 @@ LRESULT CALLBACK WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) 
         LoadMTAConfig();
         RunNuke(hwnd);
 
+        ShowPrompt();
         SetTimer(hwnd, 1, 100, NULL);
 
         return 0;
