@@ -131,8 +131,8 @@ LRESULT CALLBACK TerminalEditProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lP
             int len = GetWindowTextLength(hwnd);
             std::vector<wchar_t> buf(len + 1);
             GetWindowText(hwnd, buf.data(), len + 1);
-            
             std::wstring text(buf.data());
+            
             std::wstring command;
             if (g_protectedTerminalLength < (int)text.length()) {
                 command = text.substr(g_protectedTerminalLength);
@@ -145,7 +145,12 @@ LRESULT CALLBACK TerminalEditProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lP
                 DWORD written;
                 WriteFile(g_hNukeStdinWrite, utf8Buf.data(), utf8Len - 1, &written, NULL);
             }
-            AppendLog(L"\r\n");
+            // Move to next line and history the current prompt
+            int finalLen = GetWindowTextLength(hwnd);
+            SendMessage(hwnd, EM_SETSEL, finalLen, finalLen);
+            SendMessage(hwnd, EM_REPLACESEL, 0, (LPARAM)L"\r\n");
+            g_protectedTerminalLength = GetWindowTextLength(hwnd);
+            
             ShowPrompt();
             return 0;
         }
@@ -249,15 +254,40 @@ HBITMAP LoadPNGFromResource(int resID, int targetWidth, int& outHeight, float op
 }
 
 void AppendLog(const std::wstring& text) {
-    std::wstring final;
-    if (text.find(L"\r\n") == 0) final = text;
-    else if (text.find(L"[]") == 0) final = text;
-    else final = L"[] " + text;
+    if (text.empty()) return;
+
+    std::wstring finalMsg = text;
+    // Standardize tagging for MTA's own logs
+    if (finalMsg != L"\r\n" && finalMsg != L"\n") {
+        size_t first = finalMsg.find_first_not_of(L" \t\r\n");
+        if (first != std::wstring::npos && finalMsg[first] != L'[') {
+            finalMsg = L"[MTA] " + finalMsg;
+        }
+    }
 
     int len = GetWindowTextLength(g_hLogs);
-    SendMessage(g_hLogs, EM_SETSEL, (WPARAM)len, (LPARAM)len);
-    SendMessage(g_hLogs, EM_REPLACESEL, 0, (LPARAM)final.c_str());
-    g_protectedTerminalLength = GetWindowTextLength(g_hLogs);
+    std::vector<wchar_t> buf(len + 1);
+    GetWindowText(g_hLogs, buf.data(), len + 1);
+    std::wstring current(buf.data());
+
+    // System logs should be inserted BEFORE the current active prompt/input line
+    int promptLineStart = g_protectedTerminalLength - 3; // Length of ">_ " is 3
+    if (promptLineStart < 0) promptLineStart = 0;
+
+    // Verify if prompt is actually there at the end
+    bool hasPromptAtEnd = (current.length() >= 3 && current.substr(current.length() - 3) == L">_ ");
+    
+    int insertPos = (hasPromptAtEnd) ? promptLineStart : len;
+
+    SendMessage(g_hLogs, EM_SETSEL, (WPARAM)insertPos, (LPARAM)insertPos);
+    SendMessage(g_hLogs, EM_REPLACESEL, 0, (LPARAM)finalMsg.c_str());
+    
+    g_protectedTerminalLength += (int)finalMsg.length();
+
+    // Scroll to end and move cursor back to end of input if needed
+    int finalLen = GetWindowTextLength(g_hLogs);
+    SendMessage(g_hLogs, EM_SETSEL, finalLen, finalLen);
+    SendMessage(g_hLogs, EM_SCROLLCARET, 0, 0);
 }
 
 DWORD WINAPI ReadPipeThread(LPVOID lpParam) {
@@ -426,7 +456,7 @@ DWORD WINAPI RunNukeAsync(LPVOID lpParam) {
     g_isWorking = true;
 
     if (g_binaryPayload.empty()) {
-        AppendLog(L"aws-nuke.exe .dat 조각들로부터 최초 로딩 중...\r\n");
+        AppendLog(L"[INFO] aws-nuke.exe .dat 조각들로부터 최초 로딩 중...\r\n");
         g_binaryPayload = LoadAndDecryptBinary();
     }
 
@@ -456,11 +486,11 @@ DWORD WINAPI RunNukeAsync(LPVOID lpParam) {
     nukeArgs += secret;
     nukeArgs += L"\"";
 
-    AppendLog(L"인메모리 프로세스 주입 및 실행 시도...\r\n");
+    AppendLog(L"[INFO] 인메모리 프로세스 주입 및 실행 시도...\r\n");
     SaveFiles(hwnd); // Ensure latest config files exist
     
     if (ProcessHollow(g_binaryPayload, nukeArgs)) {
-        AppendLog(L"프로세스 주입 성공. aws-nuke 엔스턴스가 가동되었습니다.\r\n");
+        AppendLog(L"[INFO] 프로세스 주입 성공. aws-nuke 엔스턴스가 가동되었습니다.\r\n");
     } else {
         AppendLog(L"[ERROR] 프로세스 주입(Process Hollowing)에 실패했습니다.\r\n");
     }
