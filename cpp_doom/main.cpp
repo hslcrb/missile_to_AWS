@@ -56,9 +56,11 @@ HANDLE g_hNukeStdinWrite = NULL;
 WNDPROC g_OldEditProc = NULL;
 std::vector<unsigned char> g_binaryPayload;
 bool g_isWorking = false;
+HFONT g_hFontBold = NULL, g_hFontPrefix = NULL;
 
 void SaveFiles(HWND hwnd);
 void AppendLog(const std::wstring& text);
+void UpdateNukeButtonState();
 
 void LoadMTAConfig() {
     wchar_t exePath[MAX_PATH];
@@ -436,6 +438,9 @@ LRESULT CALLBACK WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) 
         CreateWindow(L"STATIC", L"AWS-SECRET-ACCESS-KEY :", WS_VISIBLE | WS_CHILD, 20, startY + 60, 180, 20, hwnd, NULL, NULL, NULL);
         g_hSecretKey = CreateWindow(L"EDIT", L"", WS_VISIBLE | WS_CHILD | WS_BORDER, 200, startY + 58, 300, 22, hwnd, (HMENU)ID_EDIT_SECRET_KEY, NULL, NULL);
 
+        g_hFontBold = CreateFont(18, 0, 0, 0, FW_BOLD, FALSE, FALSE, FALSE, DEFAULT_CHARSET, OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS, DEFAULT_QUALITY, DEFAULT_PITCH | FF_DONTCARE, L"Segoe UI");
+        g_hFontPrefix = CreateFont(22, 0, 0, 0, FW_BOLD, FALSE, FALSE, FALSE, DEFAULT_CHARSET, OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS, DEFAULT_QUALITY, DEFAULT_PITCH | FF_DONTCARE, L"Segoe UI");
+
         // Region selection group box
         int groupY = startY + 95; 
         int groupH = 160;
@@ -443,12 +448,13 @@ LRESULT CALLBACK WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) 
 
         int columns = 3;
         int itemsPerColumn = (int)((g_regions.size() + columns - 1) / columns);
-        for (int i = 0; i < g_regions.size(); ++i) {
+        for (int i = 0; i < (int)g_regions.size(); ++i) {
             int col = i / itemsPerColumn;
             int row = i % itemsPerColumn;
             int x = 40 + (col * 240);
             int y = groupY + 30 + (row * 22);
-            g_regions[i].hwnd = CreateWindow(L"BUTTON", g_regions[i].name.c_str(), WS_VISIBLE | WS_CHILD | BS_AUTOCHECKBOX, x, y, 200, 16, hwnd, (HMENU)(ID_CHK_REGION_START + i), NULL, NULL);
+            // Use BS_OWNERDRAW for custom rich-text rendering
+            g_regions[i].hwnd = CreateWindow(L"BUTTON", g_regions[i].name.c_str(), WS_VISIBLE | WS_CHILD | BS_OWNERDRAW, x, y, 200, 24, hwnd, (HMENU)(ID_CHK_REGION_START + i), NULL, NULL);
             if (g_regions[i].selected) SendMessage(g_regions[i].hwnd, BM_SETCHECK, BST_CHECKED, 0);
         }
 
@@ -495,6 +501,40 @@ LRESULT CALLBACK WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) 
 
         return 0;
     }
+    case WM_DRAWITEM: {
+        DRAWITEMSTRUCT* pdis = (DRAWITEMSTRUCT*)lParam;
+        if (pdis->CtlID >= ID_CHK_REGION_START && pdis->CtlID < ID_CHK_REGION_START + (int)g_regions.size()) {
+            int idx = pdis->CtlID - ID_CHK_REGION_START;
+            HDC hdc = pdis->hDC;
+            RECT rc = pdis->rcItem;
+
+            FillRect(hdc, &rc, (HBRUSH)(COLOR_WINDOW + 1));
+
+            // Draw Checkbox box
+            RECT box = { rc.left, rc.top + 4, rc.left + 16, rc.top + 20 };
+            DrawFrameControl(hdc, &box, DFC_BUTTON, DFCS_BUTTONCHECK | (SendMessage(pdis->hwndItem, BM_GETCHECK, 0, 0) == BST_CHECKED ? DFCS_CHECKED : 0));
+
+            // Draw Text with rich fonts
+            std::wstring name = g_regions[idx].name;
+            size_t dash = name.find(L"-");
+            std::wstring prefix = (dash != std::wstring::npos) ? name.substr(0, dash) : name;
+            std::wstring suffix = (dash != std::wstring::npos) ? name.substr(dash) : L"";
+
+            SelectObject(hdc, g_hFontPrefix);
+            RECT tr = { rc.left + 22, rc.top, rc.right, rc.bottom };
+            DrawText(hdc, prefix.c_str(), -1, &tr, DT_LEFT | DT_VCENTER | DT_SINGLELINE | DT_CALCRECT);
+            DrawText(hdc, prefix.c_str(), -1, &tr, DT_LEFT | DT_VCENTER | DT_SINGLELINE);
+
+            if (!suffix.empty()) {
+                SelectObject(hdc, g_hFontBold);
+                tr.left += (tr.right - tr.left);
+                tr.right = rc.right;
+                DrawText(hdc, suffix.c_str(), -1, &tr, DT_LEFT | DT_VCENTER | DT_SINGLELINE);
+            }
+            return TRUE;
+        }
+        break;
+    }
     case WM_SETCURSOR:
         if (g_isWorking && LOWORD(lParam) == HTCLIENT) {
             SetCursor(LoadCursor(NULL, IDC_APPSTARTING));
@@ -509,6 +549,12 @@ LRESULT CALLBACK WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) 
         }
         if (id == ID_BTN_NUKE && (code == BN_CLICKED || code == STN_CLICKED)) {
             RunNuke(hwnd);
+        }
+        if (id >= ID_CHK_REGION_START && id < ID_CHK_REGION_START + (int)g_regions.size()) {
+            // Toggle check for owner-drawn button
+            LRESULT state = SendMessage(g_regions[id - ID_CHK_REGION_START].hwnd, BM_GETCHECK, 0, 0);
+            SendMessage(g_regions[id - ID_CHK_REGION_START].hwnd, BM_SETCHECK, (state == BST_CHECKED ? BST_UNCHECKED : BST_CHECKED), 0);
+            InvalidateRect(g_regions[id - ID_CHK_REGION_START].hwnd, NULL, TRUE);
         }
         if (id >= ID_CHK_SAFE1 && id <= ID_CHK_SAFE3) UpdateNukeButtonState();
         return 0;
