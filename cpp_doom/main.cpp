@@ -283,26 +283,29 @@ LRESULT CALLBACK WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) 
             if (g_regions[i].selected) SendMessage(g_regions[i].hwnd, BM_SETCHECK, BST_CHECKED, 0);
         }
 
-        // Adjust subsequent control positions
-        int offset = -200; // Move elements up since grid is shorter
-
         // Pure image for SAVE (no button border, scaled to original button size)
-        int imgH;
+        int imgH = 30; // fallback height
         int targetW = 80; // Original button width
         HBITMAP hSaveBmp = LoadPNGFromResource(IDB_SAVE_PNG, targetW, imgH);
         
-        HWND hBtnSave = CreateWindow(L"STATIC", L"", WS_VISIBLE | WS_CHILD | SS_BITMAP | SS_NOTIFY, 20, 540 + offset, targetW, imgH, hwnd, (HMENU)ID_BTN_SAVE, NULL, NULL);
+        int saveY = 325; // Directly below the 310px group box
+        HWND hBtnSave = CreateWindow(L"STATIC", L"", WS_VISIBLE | WS_CHILD | SS_BITMAP | SS_NOTIFY, 20, saveY, targetW, imgH, hwnd, (HMENU)ID_BTN_SAVE, NULL, NULL);
         if (hSaveBmp) SendMessage(hBtnSave, STM_SETIMAGE, IMAGE_BITMAP, (LPARAM)hSaveBmp);
 
-        CreateWindow(L"STATIC", L"● BOMB", WS_VISIBLE | WS_CHILD, 20, 590 + offset, 80, 25, hwnd, NULL, NULL, NULL);
+        int bombY = saveY + imgH + 20; // 20px gap below the dynamic image height
+        CreateWindow(L"STATIC", L"● BOMB", WS_VISIBLE | WS_CHILD, 20, bombY, 80, 25, hwnd, NULL, NULL, NULL);
         for (int i = 0; i < 3; ++i) {
-            g_hChkSafe[i] = CreateWindow(L"BUTTON", L"", WS_VISIBLE | WS_CHILD | BS_AUTOCHECKBOX, 100 + (i * 30), 590 + offset, 20, 20, hwnd, (HMENU)(ID_CHK_SAFE1 + i), NULL, NULL);
+            g_hChkSafe[i] = CreateWindow(L"BUTTON", L"", WS_VISIBLE | WS_CHILD | BS_AUTOCHECKBOX, 100 + (i * 30), bombY, 20, 20, hwnd, (HMENU)(ID_CHK_SAFE1 + i), NULL, NULL);
         }
 
-        g_hBtnNuke = CreateWindow(L"BUTTON", L"DELETE YOUR RESOURCES", WS_VISIBLE | WS_CHILD | BS_PUSHBUTTON | WS_DISABLED, 20, 620 + offset, 250, 35, hwnd, (HMENU)ID_BTN_NUKE, NULL, NULL);
+        int btnNukeY = bombY + 30;
+        g_hBtnNuke = CreateWindow(L"BUTTON", L"DELETE YOUR RESOURCES", WS_VISIBLE | WS_CHILD | BS_PUSHBUTTON | WS_DISABLED, 20, btnNukeY, 250, 35, hwnd, (HMENU)ID_BTN_NUKE, NULL, NULL);
         
-        CreateWindow(L"STATIC", L"📜 LOGS", WS_VISIBLE | WS_CHILD, 20, 670 + offset, 200, 25, hwnd, NULL, NULL, NULL);
-        g_hLogs = CreateWindow(L"EDIT", L"", WS_VISIBLE | WS_CHILD | WS_BORDER | ES_MULTILINE | ES_AUTOVSCROLL | ES_READONLY | WS_VSCROLL, 20, 700 + offset, 740, 350, hwnd, (HMENU)ID_EDIT_LOGS, NULL, NULL);
+        int logsLblY = btnNukeY + 45;
+        CreateWindow(L"STATIC", L"📜 LOGS", WS_VISIBLE | WS_CHILD, 20, logsLblY, 200, 25, hwnd, NULL, NULL, NULL);
+        
+        int logsEditY = logsLblY + 30;
+        g_hLogs = CreateWindow(L"EDIT", L"", WS_VISIBLE | WS_CHILD | WS_BORDER | ES_MULTILINE | ES_AUTOVSCROLL | ES_READONLY | WS_VSCROLL, 20, logsEditY, 740, 300, hwnd, (HMENU)ID_EDIT_LOGS, NULL, NULL);
 
         EnumChildWindows(hwnd, [](HWND child, LPARAM font) -> BOOL {
             SendMessage(child, WM_SETFONT, font, TRUE);
