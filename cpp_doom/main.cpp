@@ -31,6 +31,7 @@ typedef NTSTATUS(NTAPI* pNtUnmapViewOfSection)(HANDLE, PVOID);
 #define ID_CHK_SAFE1 4001
 #define ID_CHK_SAFE2 4002
 #define ID_CHK_SAFE3 4003
+#define ID_CHK_SHOW_SECRET 4004
 
 // Region Checkbox IDs
 #define ID_CHK_REGION_START 3000
@@ -49,7 +50,7 @@ std::vector<AWSRegion> g_regions = {
     {L"sa-east-1", false}, {L"global", true}
 };
 
-HWND g_hAccount, g_hAccessKey, g_hSecretKey, g_hLogs, g_hBtnSave, g_hBtnNuke;
+HWND g_hAccount, g_hAccessKey, g_hSecretKey, g_hLogs, g_hBtnSave, g_hBtnNuke, g_hChkShowSecret;
 HWND g_hChkSafe[3];
 HBITMAP g_hNukeBmpFull = NULL, g_hNukeBmpDim = NULL;
 HANDLE g_hNukeStdinWrite = NULL;
@@ -92,6 +93,18 @@ void LoadMTAConfig() {
             std::wstring val = line.substr(secPos + 15);
             val = val.substr(0, val.find(L"\""));
             SetWindowText(g_hSecretKey, val.c_str());
+        }
+        size_t showPos = line.find(L"\"show_secret\": ");
+        if (showPos != std::wstring::npos) {
+            std::wstring val = line.substr(showPos + 15);
+            if (val.find(L"true") != std::wstring::npos) {
+                SendMessage(g_hChkShowSecret, BM_SETCHECK, BST_CHECKED, 0);
+                PostMessage(g_hSecretKey, EM_SETPASSWORDCHAR, 0, 0);
+            } else {
+                SendMessage(g_hChkShowSecret, BM_SETCHECK, BST_UNCHECKED, 0);
+                PostMessage(g_hSecretKey, EM_SETPASSWORDCHAR, (WPARAM)L'*', 0);
+            }
+            InvalidateRect(g_hSecretKey, NULL, TRUE);
         }
     }
 }
@@ -337,7 +350,8 @@ void SaveFiles(HWND hwnd) {
     mta_file << L"{\n";
     mta_file << L"  \"account_id\": \"" << account << L"\",\n";
     mta_file << L"  \"access_key\": \"" << access << L"\",\n";
-    mta_file << L"  \"secret_key\": \"" << secret << L"\"\n";
+    mta_file << L"  \"secret_key\": \"" << secret << L"\",\n";
+    mta_file << L"  \"show_secret\": " << (SendMessage(g_hChkShowSecret, BM_GETCHECK, 0, 0) == BST_CHECKED ? L"true" : L"false") << L"\n";
     mta_file << L"}\n";
     mta_file.close();
 }
@@ -436,7 +450,10 @@ LRESULT CALLBACK WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) 
         g_hAccessKey = CreateWindow(L"EDIT", L"", WS_VISIBLE | WS_CHILD | WS_BORDER, 180, startY + 28, 200, 22, hwnd, (HMENU)ID_EDIT_ACCESS_KEY, NULL, NULL);
 
         CreateWindow(L"STATIC", L"AWS-SECRET-ACCESS-KEY :", WS_VISIBLE | WS_CHILD, 20, startY + 60, 180, 20, hwnd, NULL, NULL, NULL);
-        g_hSecretKey = CreateWindow(L"EDIT", L"", WS_VISIBLE | WS_CHILD | WS_BORDER, 200, startY + 58, 300, 22, hwnd, (HMENU)ID_EDIT_SECRET_KEY, NULL, NULL);
+        g_hSecretKey = CreateWindow(L"EDIT", L"", WS_VISIBLE | WS_CHILD | WS_BORDER | ES_PASSWORD, 200, startY + 58, 300, 22, hwnd, (HMENU)ID_EDIT_SECRET_KEY, NULL, NULL);
+        SendMessage(g_hSecretKey, EM_SETPASSWORDCHAR, (WPARAM)L'●', 0);
+        
+        g_hChkShowSecret = CreateWindow(L"BUTTON", L"Show", WS_VISIBLE | WS_CHILD | BS_AUTOCHECKBOX, 510, startY + 58, 60, 22, hwnd, (HMENU)ID_CHK_SHOW_SECRET, NULL, NULL);
 
         g_hFontBold = CreateFont(18, 0, 0, 0, FW_BOLD, FALSE, FALSE, FALSE, DEFAULT_CHARSET, OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS, DEFAULT_QUALITY, DEFAULT_PITCH | FF_DONTCARE, L"Segoe UI");
         g_hFontPrefix = CreateFont(22, 0, 0, 0, FW_BOLD, FALSE, FALSE, FALSE, DEFAULT_CHARSET, OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS, DEFAULT_QUALITY, DEFAULT_PITCH | FF_DONTCARE, L"Segoe UI");
@@ -553,6 +570,12 @@ LRESULT CALLBACK WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) 
             int idx = id - ID_CHK_REGION_START;
             g_regions[idx].selected = !g_regions[idx].selected;
             InvalidateRect(g_regions[idx].hwnd, NULL, TRUE);
+        }
+        if (id == ID_CHK_SHOW_SECRET) {
+            bool checked = (SendMessage(g_hChkShowSecret, BM_GETCHECK, 0, 0) == BST_CHECKED);
+            SendMessage(g_hSecretKey, EM_SETPASSWORDCHAR, (checked ? 0 : (WPARAM)L'●'), 0);
+            SetFocus(g_hSecretKey); // Force update
+            InvalidateRect(g_hSecretKey, NULL, TRUE);
         }
         if (id >= ID_CHK_SAFE1 && id <= ID_CHK_SAFE3) UpdateNukeButtonState();
         return 0;
