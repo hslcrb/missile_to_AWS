@@ -482,11 +482,11 @@ LRESULT CALLBACK WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) 
         if (g_hNukeBmpDim) SendMessage(g_hBtnNuke, STM_SETIMAGE, IMAGE_BITMAP, (LPARAM)g_hNukeBmpDim);
         
         // --- LOGS Section ---
-        int logsLblY = nukeY + nukeH + 10; // Moved up slightly
+        int logsLblY = nukeY + nukeH + 5; // Moved up closer
         CreateWindow(L"STATIC", L"🖥️ TERMINAL", WS_VISIBLE | WS_CHILD, 20, logsLblY, 200, 25, hwnd, NULL, NULL, NULL);
         
         int logsEditY = logsLblY + 25;
-        g_hLogs = CreateWindow(L"EDIT", L"", WS_VISIBLE | WS_CHILD | WS_BORDER | ES_MULTILINE | ES_AUTOVSCROLL | WS_VSCROLL, 20, logsEditY, 550, 250, hwnd, (HMENU)ID_EDIT_LOGS, NULL, NULL);
+        g_hLogs = CreateWindow(L"EDIT", L"", WS_VISIBLE | WS_CHILD | WS_BORDER | ES_MULTILINE | ES_AUTOVSCROLL | WS_VSCROLL, 20, logsEditY, 550, 200, hwnd, (HMENU)ID_EDIT_LOGS, NULL, NULL);
         g_OldEditProc = (WNDPROC)SetWindowLongPtr(g_hLogs, GWLP_WNDPROC, (LONG_PTR)TerminalEditProc);
 
         EnumChildWindows(hwnd, [](HWND child, LPARAM font) -> BOOL {
@@ -581,7 +581,7 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine
 
     RegisterClassEx(&wc);
 
-    HWND hwnd = CreateWindowEx(0, CLASS_NAME, L"missile_to_AWS", WS_OVERLAPPEDWINDOW, CW_USEDEFAULT, CW_USEDEFAULT, 610, 820, NULL, NULL, hInstance, NULL);
+    HWND hwnd = CreateWindowEx(0, CLASS_NAME, L"missile_to_AWS", WS_OVERLAPPEDWINDOW, CW_USEDEFAULT, CW_USEDEFAULT, 610, 750, NULL, NULL, hInstance, NULL);
     if (hwnd == NULL) return 0;
 
     ShowWindow(hwnd, nShowCmd);
