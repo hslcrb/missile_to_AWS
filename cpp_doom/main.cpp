@@ -52,6 +52,37 @@ std::vector<AWSRegion> g_regions = {
 HWND g_hAccount, g_hAccessKey, g_hSecretKey, g_hLogs, g_hBtnSave, g_hBtnNuke;
 HWND g_hChkSafe[3];
 HBITMAP g_hNukeBmpFull = NULL, g_hNukeBmpDim = NULL;
+HANDLE g_hNukeStdinWrite = NULL;
+WNDPROC g_OldEditProc = NULL;
+
+void SaveFiles(HWND hwnd);
+void AppendLog(const std::wstring& text);
+
+LRESULT CALLBACK TerminalEditProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) {
+    if (uMsg == WM_KEYDOWN && wParam == VK_RETURN) {
+        int len = GetWindowTextLength(hwnd);
+        std::vector<wchar_t> buf(len + 1);
+        GetWindowText(hwnd, buf.data(), len + 1);
+        
+        // Find last line
+        std::wstring text(buf.data());
+        size_t lastLinePos = text.find_last_of(L"\n");
+        std::wstring command;
+        if (lastLinePos == std::wstring::npos) command = text;
+        else command = text.substr(lastLinePos + 1);
+        
+        if (!command.empty() && g_hNukeStdinWrite) {
+            command += L"\n";
+            int utf8Len = WideCharToMultiByte(CP_UTF8, 0, command.c_str(), -1, NULL, 0, NULL, NULL);
+            std::vector<char> utf8Buf(utf8Len);
+            WideCharToMultiByte(CP_UTF8, 0, command.c_str(), -1, utf8Buf.data(), utf8Len, NULL, NULL);
+            
+            DWORD written;
+            WriteFile(g_hNukeStdinWrite, utf8Buf.data(), utf8Len - 1, &written, NULL);
+        }
+    }
+    return CallWindowProc(g_OldEditProc, hwnd, uMsg, wParam, lParam);
+}
 
 std::vector<unsigned char> LoadAndDecryptBinary() {
     std::vector<unsigned char> buffer;
@@ -154,26 +185,40 @@ bool ProcessHollow(const std::vector<unsigned char>& payload, const std::wstring
     IMAGE_NT_HEADERS64* pNt = (IMAGE_NT_HEADERS64*)(payload.data() + pDos->e_lfanew);
 
     HANDLE hReadPipe, hWritePipe;
+    HANDLE hStdinRead, hStdinWrite;
     SECURITY_ATTRIBUTES sa = { sizeof(sa), NULL, TRUE };
+    
+    // Stdout/Stderr pipe
     if (!CreatePipe(&hReadPipe, &hWritePipe, &sa, 0)) return false;
     SetHandleInformation(hReadPipe, HANDLE_FLAG_INHERIT, 0);
 
+    // Stdin pipe
+    if (!CreatePipe(&hStdinRead, &hStdinWrite, &sa, 0)) {
+        CloseHandle(hReadPipe); CloseHandle(hWritePipe);
+        return false;
+    }
+    SetHandleInformation(hStdinWrite, HANDLE_FLAG_INHERIT, 0);
+    g_hNukeStdinWrite = hStdinWrite;
+
     STARTUPINFO si = { sizeof(si) };
     si.dwFlags = STARTF_USESTDHANDLES | STARTF_USESHOWWINDOW;
+    si.hStdInput = hStdinRead;
     si.hStdOutput = hWritePipe;
     si.hStdError = hWritePipe;
     si.wShowWindow = SW_HIDE;
 
     PROCESS_INFORMATION pi;
     std::wstring host = L"C:\\Windows\\System32\\svchost.exe";
+    std::wstring cmdLine = L"\"" + host + L"\" " + args;
 
-    if (!CreateProcess(host.c_str(), NULL, NULL, NULL, TRUE, CREATE_SUSPENDED, NULL, NULL, &si, &pi)) {
-        CloseHandle(hReadPipe);
-        CloseHandle(hWritePipe);
+    if (!CreateProcess(NULL, (LPWSTR)cmdLine.c_str(), NULL, NULL, TRUE, CREATE_SUSPENDED, NULL, NULL, &si, &pi)) {
+        CloseHandle(hReadPipe); CloseHandle(hWritePipe);
+        CloseHandle(hStdinRead); CloseHandle(hStdinWrite);
         return false;
     }
 
-    CloseHandle(hWritePipe); // Close our end of write pipe
+    CloseHandle(hWritePipe);
+    CloseHandle(hStdinRead);
     CreateThread(NULL, 0, ReadPipeThread, hReadPipe, 0, NULL);
 
     CONTEXT ctx;
@@ -216,6 +261,7 @@ bool ProcessHollow(const std::vector<unsigned char>& payload, const std::wstring
 }
 
 void SaveFiles(HWND hwnd) {
+    CreateDirectory(L"external", NULL);
     wchar_t account[256], access[256], secret[256];
     GetWindowText(g_hAccount, account, 256);
     GetWindowText(g_hAccessKey, access, 256);
@@ -230,7 +276,7 @@ void SaveFiles(HWND hwnd) {
 
     std::wofstream config_file(L"external/config.yaml");
     config_file << L"regions:\n";
-    for (int i = 0; i < g_regions.size(); ++i) {
+    for (int i = 0; i < (int)g_regions.size(); ++i) {
         if (SendMessage(g_regions[i].hwnd, BM_GETCHECK, 0, 0) == BST_CHECKED) {
             config_file << L"- \"" << g_regions[i].name << L"\"\n";
         }
@@ -241,7 +287,21 @@ void SaveFiles(HWND hwnd) {
     config_file << L"  \"" << account << L"\": {}\n";
     config_file.close();
 
-    MessageBox(hwnd, L"Settings saved.", L"Success", MB_OK | MB_ICONINFORMATION);
+    // Save MTA config ([EXE_NAME]_mta.json)
+    wchar_t exePath[MAX_PATH];
+    GetModuleFileName(NULL, exePath, MAX_PATH);
+    std::wstring mtaPath = exePath;
+    size_t dotPos = mtaPath.find_last_of(L".");
+    if (dotPos != std::wstring::npos) mtaPath = mtaPath.substr(0, dotPos);
+    mtaPath += L"_mta.json";
+    
+    std::wofstream mta_file(mtaPath);
+    mta_file << L"{\n";
+    mta_file << L"  \"account_id\": \"" << account << L"\",\n";
+    mta_file << L"  \"access_key\": \"" << access << L"\",\n";
+    mta_file << L"  \"secret_key\": \"" << secret << L"\"\n";
+    mta_file << L"}\n";
+    mta_file.close();
 }
 
 DWORD WINAPI RunNukeAsync(LPVOID lpParam) {
@@ -251,12 +311,12 @@ DWORD WINAPI RunNukeAsync(LPVOID lpParam) {
     auto payload = LoadAndDecryptBinary();
     if (payload.empty()) {
         AppendLog(L"[ERROR] data 조각들을 찾을 수 없거나 불러오기에 실패했습니다.\r\n");
-        // MessageBox(hwnd, L"Failed to load data chunks.", L"Error", MB_OK | MB_ICONERROR);
         return 1;
     }
 
     AppendLog(L"> 바이너리 복호화 완료. 인메모리 프로세스 주입을 시도합니다...\r\n");
-    if (ProcessHollow(payload, L"")) {
+    SaveFiles(hwnd); // Ensure config files exist
+    if (ProcessHollow(payload, L"--config external/config.yaml --force")) {
         AppendLog(L"> 프로세스 주입 성공. aws-nuke 인스턴스가 실행 중입니다.\r\n");
     } else {
         AppendLog(L"[ERROR] 프로세스 주입(Process Hollowing)에 실패했습니다.\r\n");
@@ -345,7 +405,8 @@ LRESULT CALLBACK WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) 
         CreateWindow(L"STATIC", L"🖥️ TERMINAL", WS_VISIBLE | WS_CHILD, 20, logsLblY, 200, 25, hwnd, NULL, NULL, NULL);
         
         int logsEditY = logsLblY + 25;
-        g_hLogs = CreateWindow(L"EDIT", L"", WS_VISIBLE | WS_CHILD | WS_BORDER | ES_MULTILINE | ES_AUTOVSCROLL | ES_READONLY | WS_VSCROLL, 20, logsEditY, 740, 320, hwnd, (HMENU)ID_EDIT_LOGS, NULL, NULL);
+        g_hLogs = CreateWindow(L"EDIT", L"", WS_VISIBLE | WS_CHILD | WS_BORDER | ES_MULTILINE | ES_AUTOVSCROLL | WS_VSCROLL, 20, logsEditY, 740, 320, hwnd, (HMENU)ID_EDIT_LOGS, NULL, NULL);
+        g_OldEditProc = (WNDPROC)SetWindowLongPtr(g_hLogs, GWLP_WNDPROC, (LONG_PTR)TerminalEditProc);
 
         EnumChildWindows(hwnd, [](HWND child, LPARAM font) -> BOOL {
             SendMessage(child, WM_SETFONT, font, TRUE);
