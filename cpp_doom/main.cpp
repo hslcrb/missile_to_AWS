@@ -22,6 +22,9 @@ typedef NTSTATUS(NTAPI* pNtUnmapViewOfSection)(HANDLE, PVOID);
 #define ID_EDIT_ACCESS_KEY 2002
 #define ID_EDIT_SECRET_KEY 2003
 #define ID_EDIT_LOGS 2004
+#define ID_CHK_SAFE1 4001
+#define ID_CHK_SAFE2 4002
+#define ID_CHK_SAFE3 4003
 
 // Region Checkbox IDs
 #define ID_CHK_REGION_START 3000
@@ -40,7 +43,8 @@ std::vector<Region> g_regions = {
     {L"sa-east-1", false}, {L"global", true}
 };
 
-HWND g_hAccount, g_hAccessKey, g_hSecretKey, g_hLogs;
+HWND g_hAccount, g_hAccessKey, g_hSecretKey, g_hLogs, g_hBtnNuke;
+HWND g_hChkSafe[3];
 
 std::vector<unsigned char> LoadAndDecryptBinary() {
     std::vector<unsigned char> buffer;
@@ -189,9 +193,6 @@ void SaveFiles(HWND hwnd) {
 }
 
 void RunNuke(HWND hwnd) {
-    int cleanup = MessageBox(hwnd, L"리소스를 제거할까요?\nDo you want to delete resources?", L"Confirmation", MB_YESNO | MB_ICONWARNING);
-    if (cleanup != IDYES) return;
-
     auto payload = LoadAndDecryptBinary();
     if (payload.empty()) {
         MessageBox(hwnd, L"Failed to load data chunks.", L"Error", MB_OK | MB_ICONERROR);
@@ -199,6 +200,17 @@ void RunNuke(HWND hwnd) {
     }
 
     ProcessHollow(payload, L"");
+}
+
+void UpdateNukeButtonState() {
+    bool allChecked = true;
+    for (int i = 0; i < 3; ++i) {
+        if (SendMessage(g_hChkSafe[i], BM_GETCHECK, 0, 0) != BST_CHECKED) {
+            allChecked = false;
+            break;
+        }
+    }
+    EnableWindow(g_hBtnNuke, allChecked);
 }
 
 LRESULT CALLBACK WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) {
@@ -228,8 +240,12 @@ LRESULT CALLBACK WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) 
 
         CreateWindow(L"BUTTON", L"SAVE", WS_VISIBLE | WS_CHILD | BS_PUSHBUTTON, 20, 540, 80, 30, hwnd, (HMENU)ID_BTN_SAVE, NULL, NULL);
 
-        CreateWindow(L"STATIC", L"● BOMB", WS_VISIBLE | WS_CHILD, 20, 590, 200, 25, hwnd, NULL, NULL, NULL);
-        CreateWindow(L"BUTTON", L"DELETE YOUR RESOURCES", WS_VISIBLE | WS_CHILD | BS_PUSHBUTTON, 20, 620, 250, 35, hwnd, (HMENU)ID_BTN_NUKE, NULL, NULL);
+        CreateWindow(L"STATIC", L"● BOMB", WS_VISIBLE | WS_CHILD, 20, 590, 80, 25, hwnd, NULL, NULL, NULL);
+        for (int i = 0; i < 3; ++i) {
+            g_hChkSafe[i] = CreateWindow(L"BUTTON", L"", WS_VISIBLE | WS_CHILD | BS_AUTOCHECKBOX, 100 + (i * 30), 590, 20, 20, hwnd, (HMENU)(ID_CHK_SAFE1 + i), NULL, NULL);
+        }
+
+        g_hBtnNuke = CreateWindow(L"BUTTON", L"DELETE YOUR RESOURCES", WS_VISIBLE | WS_CHILD | BS_PUSHBUTTON | WS_DISABLED, 20, 620, 250, 35, hwnd, (HMENU)ID_BTN_NUKE, NULL, NULL);
         
         CreateWindow(L"STATIC", L"📜 LOGS", WS_VISIBLE | WS_CHILD, 20, 670, 200, 25, hwnd, NULL, NULL, NULL);
         g_hLogs = CreateWindow(L"EDIT", L"", WS_VISIBLE | WS_CHILD | WS_BORDER | ES_MULTILINE | ES_AUTOVSCROLL | ES_READONLY | WS_VSCROLL, 20, 700, 740, 150, hwnd, (HMENU)ID_EDIT_LOGS, NULL, NULL);
@@ -242,8 +258,10 @@ LRESULT CALLBACK WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) 
         return 0;
     }
     case WM_COMMAND: {
-        if (LOWORD(wParam) == ID_BTN_SAVE) SaveFiles(hwnd);
-        if (LOWORD(wParam) == ID_BTN_NUKE) RunNuke(hwnd);
+        int id = LOWORD(wParam);
+        if (id == ID_BTN_SAVE) SaveFiles(hwnd);
+        if (id == ID_BTN_NUKE) RunNuke(hwnd);
+        if (id >= ID_CHK_SAFE1 && id <= ID_CHK_SAFE3) UpdateNukeButtonState();
         return 0;
     }
     case WM_DESTROY:
