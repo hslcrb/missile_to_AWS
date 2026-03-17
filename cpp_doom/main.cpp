@@ -311,7 +311,7 @@ LRESULT CALLBACK WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) 
         }
 
         int btnNukeY = bombY + 30;
-        int nukeW = 250;
+        int nukeW = 180; // Reduced width to keep height reasonable
         int nukeH;
         g_hNukeBmpFull = LoadPNGFromResource(IDB_NUKE_PNG, nukeW, nukeH, 1.0f);
         g_hNukeBmpDim = LoadPNGFromResource(IDB_NUKE_PNG, nukeW, nukeH, 0.4f);
@@ -319,11 +319,11 @@ LRESULT CALLBACK WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) 
         g_hBtnNuke = CreateWindow(L"STATIC", L"", WS_VISIBLE | WS_CHILD | SS_BITMAP | SS_NOTIFY | WS_DISABLED, 20, btnNukeY, nukeW, nukeH, hwnd, (HMENU)ID_BTN_NUKE, NULL, NULL);
         if (g_hNukeBmpDim) SendMessage(g_hBtnNuke, STM_SETIMAGE, IMAGE_BITMAP, (LPARAM)g_hNukeBmpDim);
         
-        int logsLblY = btnNukeY + 45;
+        int logsLblY = btnNukeY + nukeH + 15; // Gap based on actual image height
         CreateWindow(L"STATIC", L"📜 LOGS", WS_VISIBLE | WS_CHILD, 20, logsLblY, 200, 25, hwnd, NULL, NULL, NULL);
         
         int logsEditY = logsLblY + 30;
-        g_hLogs = CreateWindow(L"EDIT", L"", WS_VISIBLE | WS_CHILD | WS_BORDER | ES_MULTILINE | ES_AUTOVSCROLL | ES_READONLY | WS_VSCROLL, 20, logsEditY, 740, 300, hwnd, (HMENU)ID_EDIT_LOGS, NULL, NULL);
+        g_hLogs = CreateWindow(L"EDIT", L"", WS_VISIBLE | WS_CHILD | WS_BORDER | ES_MULTILINE | ES_AUTOVSCROLL | ES_READONLY | WS_VSCROLL, 20, logsEditY, 740, 350, hwnd, (HMENU)ID_EDIT_LOGS, NULL, NULL);
 
         EnumChildWindows(hwnd, [](HWND child, LPARAM font) -> BOOL {
             SendMessage(child, WM_SETFONT, font, TRUE);
