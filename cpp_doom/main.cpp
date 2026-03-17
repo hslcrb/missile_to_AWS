@@ -421,22 +421,23 @@ LRESULT CALLBACK WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) 
         HFONT hFont = CreateFont(18, 0, 0, 0, FW_NORMAL, FALSE, FALSE, FALSE, DEFAULT_CHARSET, OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS, DEFAULT_QUALITY, DEFAULT_PITCH | FF_DONTCARE, L"Segoe UI");
 
         int mtaH;
-        int mtaW = 120;
+        int mtaW = 220; // Enlarged as requested
         HBITMAP hMtaBmp = LoadPNGFromResource(IDB_MTA_PNG, mtaW, mtaH);
         HWND hMta = CreateWindow(L"STATIC", L"", WS_VISIBLE | WS_CHILD | SS_BITMAP, 20, 15, mtaW, mtaH, hwnd, NULL, NULL, NULL);
         if (hMtaBmp) SendMessage(hMta, STM_SETIMAGE, IMAGE_BITMAP, (LPARAM)hMtaBmp);
 
-        CreateWindow(L"STATIC", L"Account-ID :", WS_VISIBLE | WS_CHILD, 20, 60, 150, 20, hwnd, NULL, NULL, NULL);
-        g_hAccount = CreateWindow(L"EDIT", L"", WS_VISIBLE | WS_CHILD | WS_BORDER, 180, 58, 200, 22, hwnd, (HMENU)ID_EDIT_ACCOUNT, NULL, NULL);
+        int startY = 85; // Shifted down to accommodate larger header
+        CreateWindow(L"STATIC", L"Account-ID :", WS_VISIBLE | WS_CHILD, 20, startY, 150, 20, hwnd, NULL, NULL, NULL);
+        g_hAccount = CreateWindow(L"EDIT", L"", WS_VISIBLE | WS_CHILD | WS_BORDER, 180, startY - 2, 200, 22, hwnd, (HMENU)ID_EDIT_ACCOUNT, NULL, NULL);
 
-        CreateWindow(L"STATIC", L"AWS-ACCESS-KEY-ID :", WS_VISIBLE | WS_CHILD, 20, 90, 150, 20, hwnd, NULL, NULL, NULL);
-        g_hAccessKey = CreateWindow(L"EDIT", L"", WS_VISIBLE | WS_CHILD | WS_BORDER, 180, 88, 200, 22, hwnd, (HMENU)ID_EDIT_ACCESS_KEY, NULL, NULL);
+        CreateWindow(L"STATIC", L"AWS-ACCESS-KEY-ID :", WS_VISIBLE | WS_CHILD, 20, startY + 30, 150, 20, hwnd, NULL, NULL, NULL);
+        g_hAccessKey = CreateWindow(L"EDIT", L"", WS_VISIBLE | WS_CHILD | WS_BORDER, 180, startY + 28, 200, 22, hwnd, (HMENU)ID_EDIT_ACCESS_KEY, NULL, NULL);
 
-        CreateWindow(L"STATIC", L"AWS-SECRET-ACCESS-KEY :", WS_VISIBLE | WS_CHILD, 20, 120, 180, 20, hwnd, NULL, NULL, NULL);
-        g_hSecretKey = CreateWindow(L"EDIT", L"", WS_VISIBLE | WS_CHILD | WS_BORDER, 200, 118, 300, 22, hwnd, (HMENU)ID_EDIT_SECRET_KEY, NULL, NULL);
+        CreateWindow(L"STATIC", L"AWS-SECRET-ACCESS-KEY :", WS_VISIBLE | WS_CHILD, 20, startY + 60, 180, 20, hwnd, NULL, NULL, NULL);
+        g_hSecretKey = CreateWindow(L"EDIT", L"", WS_VISIBLE | WS_CHILD | WS_BORDER, 200, startY + 58, 300, 22, hwnd, (HMENU)ID_EDIT_SECRET_KEY, NULL, NULL);
 
         // Region selection group box
-        int groupY = 150;
+        int groupY = startY + 95; 
         int groupH = 160;
         CreateWindow(L"BUTTON", L"리소스를 삭제할 리전을 선택해주세요", WS_VISIBLE | WS_CHILD | BS_GROUPBOX, 15, groupY, 750, groupH, hwnd, NULL, NULL, NULL);
 
