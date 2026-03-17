@@ -63,6 +63,7 @@ std::vector<unsigned char> g_binaryPayload;
 bool g_isWorking = false;
 HFONT g_hFontBold = NULL, g_hFontPrefix = NULL, g_hFontIndicator = NULL;
 HBRUSH g_hBrushNavy = NULL, g_hBrushRed = NULL, g_hBrushPureRed = NULL;
+int g_protectedTerminalLength = 0;
 
 void SaveFiles(HWND hwnd);
 void AppendLog(const std::wstring& text);
@@ -115,27 +116,51 @@ void LoadMTAConfig() {
 }
 
 LRESULT CALLBACK TerminalEditProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) {
-    if (uMsg == WM_KEYDOWN && wParam == VK_RETURN) {
-        int len = GetWindowTextLength(hwnd);
-        std::vector<wchar_t> buf(len + 1);
-        GetWindowText(hwnd, buf.data(), len + 1);
-        
-        // Find last line
-        std::wstring text(buf.data());
-        size_t lastLinePos = text.find_last_of(L"\n");
-        std::wstring command;
-        if (lastLinePos == std::wstring::npos) command = text;
-        else command = text.substr(lastLinePos + 1);
-        
-        if (!command.empty() && g_hNukeStdinWrite) {
-            command += L"\n";
-            int utf8Len = WideCharToMultiByte(CP_UTF8, 0, command.c_str(), -1, NULL, 0, NULL, NULL);
-            std::vector<char> utf8Buf(utf8Len);
-            WideCharToMultiByte(CP_UTF8, 0, command.c_str(), -1, utf8Buf.data(), utf8Len, NULL, NULL);
+    if (uMsg == WM_KEYDOWN) {
+        DWORD start, end;
+        SendMessage(hwnd, EM_GETSEL, (WPARAM)&start, (LPARAM)&end);
+
+        if (wParam == VK_RETURN) {
+            int len = GetWindowTextLength(hwnd);
+            std::vector<wchar_t> buf(len + 1);
+            GetWindowText(hwnd, buf.data(), len + 1);
             
-            DWORD written;
-            WriteFile(g_hNukeStdinWrite, utf8Buf.data(), utf8Len - 1, &written, NULL);
+            std::wstring text(buf.data());
+            std::wstring command;
+            if (g_protectedTerminalLength < (int)text.length()) {
+                command = text.substr(g_protectedTerminalLength);
+            }
+            
+            if (!command.empty() && g_hNukeStdinWrite) {
+                // Command processing...
+                int utf8Len = WideCharToMultiByte(CP_UTF8, 0, command.c_str(), -1, NULL, 0, NULL, NULL);
+                std::vector<char> utf8Buf(utf8Len);
+                WideCharToMultiByte(CP_UTF8, 0, command.c_str(), -1, utf8Buf.data(), utf8Len, NULL, NULL);
+                DWORD written;
+                WriteFile(g_hNukeStdinWrite, utf8Buf.data(), utf8Len - 1, &written, NULL);
+            }
+            // Add newline and protect it
+            AppendLog(L"\r\n");
+            return 0; // Handled
         }
+        if (wParam == VK_BACK) {
+            if ((int)start <= g_protectedTerminalLength) return 0;
+        }
+        if (wParam == VK_DELETE) {
+            if ((int)start < g_protectedTerminalLength) return 0;
+        }
+    }
+    if (uMsg == WM_CHAR) {
+        DWORD start, end;
+        SendMessage(hwnd, EM_GETSEL, (WPARAM)&start, (LPARAM)&end);
+        if ((int)start < g_protectedTerminalLength && wParam != 3) { // Allow Ctrl+C (3)
+            return 0;
+        }
+    }
+    if (uMsg == WM_PASTE || uMsg == WM_CUT || uMsg == WM_CLEAR) {
+        DWORD start, end;
+        SendMessage(hwnd, EM_GETSEL, (WPARAM)&start, (LPARAM)&end);
+        if ((int)start < g_protectedTerminalLength) return 0;
     }
     return CallWindowProc(g_OldEditProc, hwnd, uMsg, wParam, lParam);
 }
@@ -208,6 +233,7 @@ void AppendLog(const std::wstring& text) {
     int len = GetWindowTextLength(g_hLogs);
     SendMessage(g_hLogs, EM_SETSEL, (WPARAM)len, (LPARAM)len);
     SendMessage(g_hLogs, EM_REPLACESEL, 0, (LPARAM)text.c_str());
+    g_protectedTerminalLength = GetWindowTextLength(g_hLogs);
 }
 
 DWORD WINAPI ReadPipeThread(LPVOID lpParam) {
