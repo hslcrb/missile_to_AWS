@@ -160,9 +160,10 @@ LRESULT CALLBACK TerminalEditProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lP
         if (wParam == VK_DELETE) {
             if ((int)start < g_protectedTerminalLength) return 0;
         }
-        // Prevent moving cursor into protected area
-        if (wParam == VK_LEFT || wParam == VK_UP || wParam == VK_HOME) {
-            if ((int)start <= g_protectedTerminalLength) return 0;
+        // Ctrl+A support
+        if (wParam == 'A' && (GetKeyState(VK_CONTROL) & 0x8000)) {
+            SendMessage(hwnd, EM_SETSEL, 0, -1);
+            return 0;
         }
     }
     if (uMsg == WM_LBUTTONDOWN) {
@@ -177,7 +178,11 @@ LRESULT CALLBACK TerminalEditProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lP
     if (uMsg == WM_CHAR) {
         DWORD start, end;
         SendMessage(hwnd, EM_GETSEL, (WPARAM)&start, (LPARAM)&end);
-        if ((int)start < g_protectedTerminalLength && wParam != 3) { // Allow Ctrl+C (3)
+        // Allow Ctrl+C (3), Ctrl+A (1), Ctrl+Z (26)
+        if (wParam == 3 || wParam == 1 || wParam == 26) {
+             return CallWindowProc(g_OldEditProc, hwnd, uMsg, wParam, lParam);
+        }
+        if ((int)start < g_protectedTerminalLength) {
             return 0;
         }
     }
