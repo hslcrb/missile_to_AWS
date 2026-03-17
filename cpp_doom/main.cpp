@@ -71,7 +71,7 @@ std::vector<unsigned char> LoadAndDecryptBinary() {
     return buffer;
 }
 
-HBITMAP LoadPNGFromResource(int resID, int& outWidth, int& outHeight) {
+HBITMAP LoadPNGFromResource(int resID, int targetWidth, int& outHeight) {
     HRSRC hResource = FindResource(GetModuleHandle(NULL), MAKEINTRESOURCE(resID), RT_RCDATA);
     if (!hResource) return NULL;
 
@@ -90,9 +90,16 @@ HBITMAP LoadPNGFromResource(int resID, int& outWidth, int& outHeight) {
     Bitmap* pBitmap = Bitmap::FromStream(pStream);
     HBITMAP hBitmap = NULL;
     if (pBitmap) {
-        outWidth = pBitmap->GetWidth();
-        outHeight = pBitmap->GetHeight();
-        pBitmap->GetHBITMAP(Color(255, 255, 255, 255), &hBitmap);
+        float ratio = (float)pBitmap->GetHeight() / pBitmap->GetWidth();
+        outHeight = (int)(targetWidth * ratio);
+        
+        // Create a scaled bitmap
+        Bitmap scaledBitmap(targetWidth, outHeight, PixelFormat32bppARGB);
+        Graphics graphics(&scaledBitmap);
+        graphics.SetInterpolationMode(InterpolationModeHighQualityBicubic);
+        graphics.DrawImage(pBitmap, 0, 0, targetWidth, outHeight);
+        
+        scaledBitmap.GetHBITMAP(Color(255, 255, 255, 255), &hBitmap);
         delete pBitmap;
     }
     pStream->Release();
@@ -279,12 +286,12 @@ LRESULT CALLBACK WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) 
         // Adjust subsequent control positions
         int offset = -200; // Move elements up since grid is shorter
 
-        // Pure image for SAVE (no button border)
-        int imgW, imgH;
-        HBITMAP hSaveBmp = LoadPNGFromResource(IDB_SAVE_PNG, imgW, imgH);
+        // Pure image for SAVE (no button border, scaled to original button size)
+        int imgH;
+        int targetW = 80; // Original button width
+        HBITMAP hSaveBmp = LoadPNGFromResource(IDB_SAVE_PNG, targetW, imgH);
         
-        // Use actual image dimensions to avoid cropping
-        HWND hBtnSave = CreateWindow(L"STATIC", L"", WS_VISIBLE | WS_CHILD | SS_BITMAP | SS_NOTIFY, 20, 540 + offset, imgW, imgH, hwnd, (HMENU)ID_BTN_SAVE, NULL, NULL);
+        HWND hBtnSave = CreateWindow(L"STATIC", L"", WS_VISIBLE | WS_CHILD | SS_BITMAP | SS_NOTIFY, 20, 540 + offset, targetW, imgH, hwnd, (HMENU)ID_BTN_SAVE, NULL, NULL);
         if (hSaveBmp) SendMessage(hBtnSave, STM_SETIMAGE, IMAGE_BITMAP, (LPARAM)hSaveBmp);
 
         CreateWindow(L"STATIC", L"● BOMB", WS_VISIBLE | WS_CHILD, 20, 590 + offset, 80, 25, hwnd, NULL, NULL, NULL);
