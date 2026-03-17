@@ -1,6 +1,6 @@
-data/
-node_modules/
-.next/
-out/
-build/
-src-tauri/target/
+#data/
+#node_modules/
+#.next/
+#out/
+#build/
+#src-tauri/target/

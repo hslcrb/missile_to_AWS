@@ -8,6 +8,7 @@
 #include <fstream>
 #include <CommCtrl.h>
 #include <winternl.h>
+#include "resource.h"
 
 #pragma comment(lib, "comctl32.lib")
 
@@ -211,13 +212,16 @@ LRESULT CALLBACK WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) 
 
 int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine, int nShowCmd) {
     const wchar_t CLASS_NAME[] = L"MissileToAWSWindowClass";
-    WNDCLASS wc = {};
+    WNDCLASSEX wc = {};
+    wc.cbSize = sizeof(WNDCLASSEX);
     wc.lpfnWndProc = WindowProc;
     wc.hInstance = hInstance;
     wc.lpszClassName = CLASS_NAME;
     wc.hbrBackground = (HBRUSH)(COLOR_WINDOW + 1);
+    wc.hIcon = LoadIcon(hInstance, MAKEINTRESOURCE(IDI_ICON1));
+    wc.hIconSm = (HICON)LoadImage(hInstance, MAKEINTRESOURCE(IDI_ICON1), IMAGE_ICON, 16, 16, LR_DEFAULTCOLOR);
 
-    RegisterClass(&wc);
+    RegisterClassEx(&wc);
 
     HWND hwnd = CreateWindowEx(0, CLASS_NAME, L"missile_to_AWS", WS_OVERLAPPEDWINDOW, CW_USEDEFAULT, CW_USEDEFAULT, 800, 800, NULL, NULL, hInstance, NULL);
     if (hwnd == NULL) return 0;
