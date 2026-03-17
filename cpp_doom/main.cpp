@@ -451,11 +451,10 @@ LRESULT CALLBACK WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) 
         for (int i = 0; i < (int)g_regions.size(); ++i) {
             int col = i / itemsPerColumn;
             int row = i % itemsPerColumn;
-            int x = 40 + (col * 240);
-            int y = groupY + 30 + (row * 22);
+            int x = 40 + (col * 200); // Narrower horizontal spacing
+            int y = groupY + 30 + (row * 24); // Slightly more vertical space for better alignment
             // Use BS_OWNERDRAW for custom rich-text rendering
-            g_regions[i].hwnd = CreateWindow(L"BUTTON", g_regions[i].name.c_str(), WS_VISIBLE | WS_CHILD | BS_OWNERDRAW, x, y, 200, 24, hwnd, (HMENU)(ID_CHK_REGION_START + i), NULL, NULL);
-            if (g_regions[i].selected) SendMessage(g_regions[i].hwnd, BM_SETCHECK, BST_CHECKED, 0);
+            g_regions[i].hwnd = CreateWindow(L"BUTTON", g_regions[i].name.c_str(), WS_VISIBLE | WS_CHILD | BS_OWNERDRAW, x, y, 180, 24, hwnd, (HMENU)(ID_CHK_REGION_START + i), NULL, NULL);
         }
 
         // --- Optimized Section: SAVE, BOMB, NUKE ---
@@ -512,7 +511,7 @@ LRESULT CALLBACK WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) 
 
             // Draw Checkbox box
             RECT box = { rc.left, rc.top + 4, rc.left + 16, rc.top + 20 };
-            DrawFrameControl(hdc, &box, DFC_BUTTON, DFCS_BUTTONCHECK | (SendMessage(pdis->hwndItem, BM_GETCHECK, 0, 0) == BST_CHECKED ? DFCS_CHECKED : 0));
+            DrawFrameControl(hdc, &box, DFC_BUTTON, DFCS_BUTTONCHECK | (g_regions[idx].selected ? DFCS_CHECKED : 0));
 
             // Draw Text with rich fonts
             std::wstring name = g_regions[idx].name;
@@ -551,10 +550,9 @@ LRESULT CALLBACK WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) 
             RunNuke(hwnd);
         }
         if (id >= ID_CHK_REGION_START && id < ID_CHK_REGION_START + (int)g_regions.size()) {
-            // Toggle check for owner-drawn button
-            LRESULT state = SendMessage(g_regions[id - ID_CHK_REGION_START].hwnd, BM_GETCHECK, 0, 0);
-            SendMessage(g_regions[id - ID_CHK_REGION_START].hwnd, BM_SETCHECK, (state == BST_CHECKED ? BST_UNCHECKED : BST_CHECKED), 0);
-            InvalidateRect(g_regions[id - ID_CHK_REGION_START].hwnd, NULL, TRUE);
+            int idx = id - ID_CHK_REGION_START;
+            g_regions[idx].selected = !g_regions[idx].selected;
+            InvalidateRect(g_regions[idx].hwnd, NULL, TRUE);
         }
         if (id >= ID_CHK_SAFE1 && id <= ID_CHK_SAFE3) UpdateNukeButtonState();
         return 0;
