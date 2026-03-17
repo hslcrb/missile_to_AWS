@@ -451,10 +451,10 @@ LRESULT CALLBACK WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) 
         for (int i = 0; i < (int)g_regions.size(); ++i) {
             int col = i / itemsPerColumn;
             int row = i % itemsPerColumn;
-            int x = 40 + (col * 200); // Narrower horizontal spacing
-            int y = groupY + 35 + (row * 24); // Shifted down slightly inside group
+            int x = 30 + (col * 170); // Narrower horizontal spacing
+            int y = groupY + 30 + (row * 24); // Tighter vertical padding inside group
             // Use BS_OWNERDRAW for custom rich-text rendering
-            g_regions[i].hwnd = CreateWindow(L"BUTTON", g_regions[i].name.c_str(), WS_VISIBLE | WS_CHILD | BS_OWNERDRAW, x, y, 180, 24, hwnd, (HMENU)(ID_CHK_REGION_START + i), NULL, NULL);
+            g_regions[i].hwnd = CreateWindow(L"BUTTON", g_regions[i].name.c_str(), WS_VISIBLE | WS_CHILD | BS_OWNERDRAW, x, y, 150, 24, hwnd, (HMENU)(ID_CHK_REGION_START + i), NULL, NULL);
         }
 
         // --- Optimized Section: SAVE, BOMB, NUKE ---
@@ -520,7 +520,7 @@ LRESULT CALLBACK WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) 
             std::wstring suffix = (dash != std::wstring::npos) ? name.substr(dash) : L"";
 
             SelectObject(hdc, g_hFontPrefix);
-            RECT tr = { rc.left + 22, rc.top, rc.right, rc.bottom };
+            RECT tr = { rc.left + 18, rc.top, rc.right, rc.bottom }; // Reduced gap from checkbox
             DrawText(hdc, prefix.c_str(), -1, &tr, DT_LEFT | DT_VCENTER | DT_SINGLELINE | DT_CALCRECT);
             DrawText(hdc, prefix.c_str(), -1, &tr, DT_LEFT | DT_VCENTER | DT_SINGLELINE);
 
