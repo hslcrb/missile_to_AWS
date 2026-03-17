@@ -279,14 +279,13 @@ LRESULT CALLBACK WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) 
         // Adjust subsequent control positions
         int offset = -200; // Move elements up since grid is shorter
 
-        // Image button for SAVE
+        // Pure image for SAVE (no button border)
         int imgW, imgH;
         HBITMAP hSaveBmp = LoadPNGFromResource(IDB_SAVE_PNG, imgW, imgH);
-        int btnW = 100; // Desired width
-        int btnH = (imgW > 0) ? (int)((float)imgH / imgW * btnW) : 30; // Maintain aspect ratio
         
-        HWND hBtnSave = CreateWindow(L"BUTTON", L"", WS_VISIBLE | WS_CHILD | BS_BITMAP, 20, 540 + offset, btnW, btnH, hwnd, (HMENU)ID_BTN_SAVE, NULL, NULL);
-        if (hSaveBmp) SendMessage(hBtnSave, BM_SETIMAGE, IMAGE_BITMAP, (LPARAM)hSaveBmp);
+        // Use actual image dimensions to avoid cropping
+        HWND hBtnSave = CreateWindow(L"STATIC", L"", WS_VISIBLE | WS_CHILD | SS_BITMAP | SS_NOTIFY, 20, 540 + offset, imgW, imgH, hwnd, (HMENU)ID_BTN_SAVE, NULL, NULL);
+        if (hSaveBmp) SendMessage(hBtnSave, STM_SETIMAGE, IMAGE_BITMAP, (LPARAM)hSaveBmp);
 
         CreateWindow(L"STATIC", L"● BOMB", WS_VISIBLE | WS_CHILD, 20, 590 + offset, 80, 25, hwnd, NULL, NULL, NULL);
         for (int i = 0; i < 3; ++i) {
@@ -307,7 +306,8 @@ LRESULT CALLBACK WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) 
     }
     case WM_COMMAND: {
         int id = LOWORD(wParam);
-        if (id == ID_BTN_SAVE) SaveFiles(hwnd);
+        int code = HIWORD(wParam);
+        if (id == ID_BTN_SAVE && (code == BN_CLICKED || code == STN_CLICKED)) SaveFiles(hwnd);
         if (id == ID_BTN_NUKE) RunNuke(hwnd);
         if (id >= ID_CHK_SAFE1 && id <= ID_CHK_SAFE3) UpdateNukeButtonState();
         return 0;
