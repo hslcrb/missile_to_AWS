@@ -35,11 +35,11 @@ typedef NTSTATUS(NTAPI* pNtUnmapViewOfSection)(HANDLE, PVOID);
 // Region Checkbox IDs
 #define ID_CHK_REGION_START 3000
 
-struct AWSRegion {
+typedef struct {
     std::wstring name;
     bool selected;
     HWND hwnd;
-};
+} AWSRegion;
 
 std::vector<AWSRegion> g_regions = {
     {L"us-east-1", true}, {L"us-east-2", false}, {L"us-west-1", false}, {L"us-west-2", false},
@@ -282,48 +282,52 @@ LRESULT CALLBACK WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) 
         CreateWindow(L"STATIC", L"AWS-SECRET-ACCESS-KEY :", WS_VISIBLE | WS_CHILD, 20, 120, 180, 20, hwnd, NULL, NULL, NULL);
         g_hSecretKey = CreateWindow(L"EDIT", L"", WS_VISIBLE | WS_CHILD | WS_BORDER, 200, 118, 300, 22, hwnd, (HMENU)ID_EDIT_SECRET_KEY, NULL, NULL);
 
-        CreateWindow(L"BUTTON", L"리소스를 삭제할 리전을 선택해주세요", WS_VISIBLE | WS_CHILD | BS_GROUPBOX, 15, 150, 750, 160, hwnd, NULL, NULL, NULL);
+        // Region selection group box
+        int groupY = 150;
+        int groupH = 160;
+        CreateWindow(L"BUTTON", L"리소스를 삭제할 리전을 선택해주세요", WS_VISIBLE | WS_CHILD | BS_GROUPBOX, 15, groupY, 750, groupH, hwnd, NULL, NULL, NULL);
 
         int columns = 3;
-        int itemsPerColumn = (g_regions.size() + columns - 1) / columns;
+        int itemsPerColumn = (int)((g_regions.size() + columns - 1) / columns);
         for (int i = 0; i < g_regions.size(); ++i) {
             int col = i / itemsPerColumn;
             int row = i % itemsPerColumn;
             int x = 40 + (col * 240);
-            int y = 180 + (row * 22);
+            int y = groupY + 30 + (row * 22);
             g_regions[i].hwnd = CreateWindow(L"BUTTON", g_regions[i].name.c_str(), WS_VISIBLE | WS_CHILD | BS_AUTOCHECKBOX, x, y, 200, 16, hwnd, (HMENU)(ID_CHK_REGION_START + i), NULL, NULL);
             if (g_regions[i].selected) SendMessage(g_regions[i].hwnd, BM_SETCHECK, BST_CHECKED, 0);
         }
 
-        // Pure image for SAVE (no button border, scaled to original button size)
-        int imgH = 30; // fallback height
-        int targetW = 80; // Original button width
-        HBITMAP hSaveBmp = LoadPNGFromResource(IDB_SAVE_PNG, targetW, imgH);
+        // --- Optimized Section: SAVE, BOMB, NUKE ---
+        int saveY = groupY + groupH + 10; 
+        int targetW_Save = 110; // Enlarge Save button
+        int saveH;
+        HBITMAP hSaveBmp = LoadPNGFromResource(IDB_SAVE_PNG, targetW_Save, saveH);
         
-        int saveY = 325; // Directly below the 310px group box
-        HWND hBtnSave = CreateWindow(L"STATIC", L"", WS_VISIBLE | WS_CHILD | SS_BITMAP | SS_NOTIFY, 20, saveY, targetW, imgH, hwnd, (HMENU)ID_BTN_SAVE, NULL, NULL);
+        HWND hBtnSave = CreateWindow(L"STATIC", L"", WS_VISIBLE | WS_CHILD | SS_BITMAP | SS_NOTIFY, 20, saveY, targetW_Save, saveH, hwnd, (HMENU)ID_BTN_SAVE, NULL, NULL);
         if (hSaveBmp) SendMessage(hBtnSave, STM_SETIMAGE, IMAGE_BITMAP, (LPARAM)hSaveBmp);
 
-        int bombY = saveY + imgH + 20; // 20px gap below the dynamic image height
+        int bombY = saveY + saveH + 15;
         CreateWindow(L"STATIC", L"● BOMB", WS_VISIBLE | WS_CHILD, 20, bombY, 80, 25, hwnd, NULL, NULL, NULL);
         for (int i = 0; i < 3; ++i) {
             g_hChkSafe[i] = CreateWindow(L"BUTTON", L"", WS_VISIBLE | WS_CHILD | BS_AUTOCHECKBOX, 100 + (i * 30), bombY, 20, 20, hwnd, (HMENU)(ID_CHK_SAFE1 + i), NULL, NULL);
         }
 
-        int btnNukeY = bombY + 30;
-        int nukeW = 180; // Reduced width to keep height reasonable
+        int nukeY = bombY + 30;
+        int targetW_Nuke = 180;
         int nukeH;
-        g_hNukeBmpFull = LoadPNGFromResource(IDB_NUKE_PNG, nukeW, nukeH, 1.0f);
-        g_hNukeBmpDim = LoadPNGFromResource(IDB_NUKE_PNG, nukeW, nukeH, 0.4f);
+        g_hNukeBmpFull = LoadPNGFromResource(IDB_NUKE_PNG, targetW_Nuke, nukeH, 1.0f);
+        g_hNukeBmpDim = LoadPNGFromResource(IDB_NUKE_PNG, targetW_Nuke, nukeH, 0.4f);
 
-        g_hBtnNuke = CreateWindow(L"STATIC", L"", WS_VISIBLE | WS_CHILD | SS_BITMAP | SS_NOTIFY | WS_DISABLED, 20, btnNukeY, nukeW, nukeH, hwnd, (HMENU)ID_BTN_NUKE, NULL, NULL);
+        g_hBtnNuke = CreateWindow(L"STATIC", L"", WS_VISIBLE | WS_CHILD | SS_BITMAP | SS_NOTIFY | WS_DISABLED, 20, nukeY, targetW_Nuke, nukeH, hwnd, (HMENU)ID_BTN_NUKE, NULL, NULL);
         if (g_hNukeBmpDim) SendMessage(g_hBtnNuke, STM_SETIMAGE, IMAGE_BITMAP, (LPARAM)g_hNukeBmpDim);
         
-        int logsLblY = btnNukeY + nukeH + 15; // Gap based on actual image height
+        // --- LOGS Section ---
+        int logsLblY = nukeY + nukeH + 15;
         CreateWindow(L"STATIC", L"📜 LOGS", WS_VISIBLE | WS_CHILD, 20, logsLblY, 200, 25, hwnd, NULL, NULL, NULL);
         
-        int logsEditY = logsLblY + 30;
-        g_hLogs = CreateWindow(L"EDIT", L"", WS_VISIBLE | WS_CHILD | WS_BORDER | ES_MULTILINE | ES_AUTOVSCROLL | ES_READONLY | WS_VSCROLL, 20, logsEditY, 740, 350, hwnd, (HMENU)ID_EDIT_LOGS, NULL, NULL);
+        int logsEditY = logsLblY + 25;
+        g_hLogs = CreateWindow(L"EDIT", L"", WS_VISIBLE | WS_CHILD | WS_BORDER | ES_MULTILINE | ES_AUTOVSCROLL | ES_READONLY | WS_VSCROLL, 20, logsEditY, 740, 320, hwnd, (HMENU)ID_EDIT_LOGS, NULL, NULL);
 
         EnumChildWindows(hwnd, [](HWND child, LPARAM font) -> BOOL {
             SendMessage(child, WM_SETFONT, font, TRUE);
