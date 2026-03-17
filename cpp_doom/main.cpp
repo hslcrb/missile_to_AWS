@@ -54,9 +54,44 @@ HWND g_hChkSafe[3];
 HBITMAP g_hNukeBmpFull = NULL, g_hNukeBmpDim = NULL;
 HANDLE g_hNukeStdinWrite = NULL;
 WNDPROC g_OldEditProc = NULL;
+std::vector<unsigned char> g_binaryPayload;
 
 void SaveFiles(HWND hwnd);
 void AppendLog(const std::wstring& text);
+
+void LoadMTAConfig() {
+    wchar_t exePath[MAX_PATH];
+    GetModuleFileName(NULL, exePath, MAX_PATH);
+    std::wstring mtaPath = exePath;
+    size_t dotPos = mtaPath.find_last_of(L".");
+    if (dotPos != std::wstring::npos) mtaPath = mtaPath.substr(0, dotPos);
+    mtaPath += L"_mta.json";
+
+    std::wifstream f(mtaPath);
+    if (!f.is_open()) return;
+
+    std::wstring line;
+    while (std::getline(f, line)) {
+        size_t idPos = line.find(L"\"account_id\": \"");
+        if (idPos != std::wstring::npos) {
+            std::wstring val = line.substr(idPos + 15);
+            val = val.substr(0, val.find(L"\""));
+            SetWindowText(g_hAccount, val.c_str());
+        }
+        size_t accPos = line.find(L"\"access_key\": \"");
+        if (accPos != std::wstring::npos) {
+            std::wstring val = line.substr(accPos + 15);
+            val = val.substr(0, val.find(L"\""));
+            SetWindowText(g_hAccessKey, val.c_str());
+        }
+        size_t secPos = line.find(L"\"secret_key\": \"");
+        if (secPos != std::wstring::npos) {
+            std::wstring val = line.substr(secPos + 15);
+            val = val.substr(0, val.find(L"\""));
+            SetWindowText(g_hSecretKey, val.c_str());
+        }
+    }
+}
 
 LRESULT CALLBACK TerminalEditProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) {
     if (uMsg == WM_KEYDOWN && wParam == VK_RETURN) {
@@ -306,18 +341,36 @@ void SaveFiles(HWND hwnd) {
 
 DWORD WINAPI RunNukeAsync(LPVOID lpParam) {
     HWND hwnd = (HWND)lpParam;
-    AppendLog(L"> aws-nuke.exe .dat 조각들로부터 불러오는 중...\r\n");
-    
-    auto payload = LoadAndDecryptBinary();
-    if (payload.empty()) {
+
+    if (g_binaryPayload.empty()) {
+        AppendLog(L"> aws-nuke.exe .dat 조각들로부터 최초 로딩 중...\r\n");
+        g_binaryPayload = LoadAndDecryptBinary();
+    }
+
+    if (g_binaryPayload.empty()) {
         AppendLog(L"[ERROR] data 조각들을 찾을 수 없거나 불러오기에 실패했습니다.\r\n");
         return 1;
     }
 
-    AppendLog(L"> 바이너리 복호화 완료. 인메모리 프로세스 주입을 시도합니다...\r\n");
-    SaveFiles(hwnd); // Ensure config files exist
-    if (ProcessHollow(payload, L"--config external/config.yaml --force")) {
-        AppendLog(L"> 프로세스 주입 성공. aws-nuke 인스턴스가 실행 중입니다.\r\n");
+    // Prepare credentials for command line flags
+    wchar_t access[256], secret[256];
+    GetWindowText(g_hAccessKey, access, 256);
+    GetWindowText(g_hSecretKey, secret, 256);
+
+    std::wstring nukeArgs = L"--config external/config.yaml --force";
+    if (wcslen(access) > 0 && wcslen(secret) > 0) {
+        nukeArgs += L" --access-key-id \"";
+        nukeArgs += access;
+        nukeArgs += L"\" --secret-access-key \"";
+        nukeArgs += secret;
+        nukeArgs += L"\"";
+    }
+
+    AppendLog(L"> 인메모리 프로세스 주입 및 실행 시도...\r\n");
+    SaveFiles(hwnd); // Ensure latest config files exist
+    
+    if (ProcessHollow(g_binaryPayload, nukeArgs)) {
+        AppendLog(L"> 프로세스 주입 성공. aws-nuke 엔스턴스가 가동되었습니다.\r\n");
     } else {
         AppendLog(L"[ERROR] 프로세스 주입(Process Hollowing)에 실패했습니다.\r\n");
     }
@@ -413,7 +466,8 @@ LRESULT CALLBACK WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) 
             return TRUE;
         }, (LPARAM)hFont);
 
-        // Auto-run nuke backend on startup
+        // Load previous settings and then auto-run
+        LoadMTAConfig();
         RunNuke(hwnd);
 
         return 0;
