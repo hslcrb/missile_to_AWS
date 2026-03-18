@@ -989,7 +989,7 @@ LRESULT CALLBACK WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) 
         g_hBtnNuke = CreateWindow(L"STATIC", L"", WS_VISIBLE | WS_CHILD | SS_BITMAP | SS_NOTIFY, 20, nukeY, targetW_Nuke, nukeH, hwnd, (HMENU)ID_BTN_NUKE, NULL, NULL);
         if (g_hNukeBmpFull) SendMessage(g_hBtnNuke, STM_SETIMAGE, IMAGE_BITMAP, (LPARAM)g_hNukeBmpFull);
 
-        g_hBtnCancel = CreateWindow(L"BUTTON", L"취소", WS_VISIBLE | WS_CHILD | BS_PUSHBUTTON | WS_DISABLED, 20 + targetW_Nuke + 20, nukeY + (nukeH - 40) / 2, 80, 40, hwnd, (HMENU)ID_BTN_CANCEL, NULL, NULL);
+        g_hBtnCancel = CreateWindow(L"BUTTON", L"취소", WS_VISIBLE | WS_CHILD | BS_OWNERDRAW | WS_DISABLED, 20 + targetW_Nuke + 20, nukeY + (nukeH - 40) / 2, 80, 40, hwnd, (HMENU)ID_BTN_CANCEL, NULL, NULL);
         
         // --- LOGS Section ---
         int logsLblY = nukeY + nukeH + 5; // Moved up closer
@@ -1193,6 +1193,34 @@ LRESULT CALLBACK WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) 
 
             return TRUE;
         }
+        if (pdis->CtlID == ID_BTN_CANCEL) {
+            HDC hdc = pdis->hDC;
+            RECT rc = pdis->rcItem;
+            bool isEnabled = IsWindowEnabled(pdis->hwndItem);
+
+            HBRUSH hBgBrush = isEnabled ? CreateSolidBrush(RGB(220, 20, 60)) : CreateSolidBrush(RGB(240, 240, 240));
+            FillRect(hdc, &rc, hBgBrush);
+            DeleteObject(hBgBrush);
+
+            SetTextColor(hdc, isEnabled ? RGB(255, 255, 255) : RGB(160, 160, 160));
+            SetBkMode(hdc, TRANSPARENT);
+            SelectObject(hdc, g_hFontBold);
+
+            DrawText(hdc, L"취소", -1, &rc, DT_CENTER | DT_VCENTER | DT_SINGLELINE);
+
+            if (isEnabled) {
+                HPEN hPen = CreatePen(PS_SOLID, 1, RGB(180, 0, 0));
+                HGDIOBJ oldPen = SelectObject(hdc, hPen);
+                HGDIOBJ oldBrush = SelectObject(hdc, GetStockObject(NULL_BRUSH));
+                Rectangle(hdc, rc.left, rc.top, rc.right, rc.bottom);
+                SelectObject(hdc, oldPen);
+                SelectObject(hdc, oldBrush);
+                DeleteObject(hPen);
+            } else {
+                DrawEdge(hdc, &rc, EDGE_SUNKEN, BF_RECT);
+            }
+            return TRUE;
+        }
         if (pdis->CtlID >= ID_CHK_REGION_START && pdis->CtlID < ID_CHK_REGION_START + (int)g_regions.size()) {
             int idx = pdis->CtlID - ID_CHK_REGION_START;
             HDC hdc = pdis->hDC;
@@ -1254,8 +1282,9 @@ LRESULT CALLBACK WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) 
         if (id == ID_BTN_NUKE && (code == BN_CLICKED || code == STN_CLICKED)) {
             if (g_nukeCountdown == 0) {
                 g_nukeCountdown = 5;
-                EnableWindow(g_hBtnNuke, FALSE);
+                SendMessage(g_hBtnNuke, STM_SETIMAGE, IMAGE_BITMAP, (LPARAM)g_hNukeBmpDim);
                 EnableWindow(g_hBtnCancel, TRUE);
+                InvalidateRect(g_hBtnCancel, NULL, TRUE);
                 AppendLog(L"\r\n[Cleaner] **경고** 5초 뒤 삭제를 진행합니다. 취소하려면 '취소' 버튼을 누르세요.\r\n");
                 SetTimer(hwnd, 2, 1000, NULL);
             }
@@ -1265,8 +1294,9 @@ LRESULT CALLBACK WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) 
                 KillTimer(hwnd, 2);
                 g_nukeCountdown = 0;
                 AppendLog(L"[Cleaner] 삭제 작업이 취소되었습니다.\r\n");
-                EnableWindow(g_hBtnNuke, TRUE);
+                SendMessage(g_hBtnNuke, STM_SETIMAGE, IMAGE_BITMAP, (LPARAM)g_hNukeBmpFull);
                 EnableWindow(g_hBtnCancel, FALSE);
+                InvalidateRect(g_hBtnCancel, NULL, TRUE);
             }
         }
         if (id == ID_CHK_SELECT_ALL) {
@@ -1316,6 +1346,23 @@ LRESULT CALLBACK WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) 
             if (!g_isIMEComposing) SendMessage(g_hResourceFilter, CB_SHOWDROPDOWN, TRUE, 0);
             
             g_isFiltering = false;
+        }
+        return 0;
+    }
+    case WM_TIMER: {
+        if (wParam == 2) {
+            if (g_nukeCountdown > 0) {
+                g_nukeCountdown--;
+                std::wstring msg = L"[Cleaner] 삭제 시작까지 " + std::to_wstring(g_nukeCountdown) + L"초 남았습니다...\r\n";
+                AppendLog(msg);
+                if (g_nukeCountdown == 0) {
+                    KillTimer(hwnd, 2);
+                    SendMessage(g_hBtnNuke, STM_SETIMAGE, IMAGE_BITMAP, (LPARAM)g_hNukeBmpFull);
+                    EnableWindow(g_hBtnCancel, FALSE);
+                    InvalidateRect(g_hBtnCancel, NULL, TRUE);
+                    RunNuke(hwnd);
+                }
+            }
         }
         return 0;
     }
