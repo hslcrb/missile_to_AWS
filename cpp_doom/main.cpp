@@ -2,11 +2,13 @@
 #define UNICODE
 #endif
 
+#define NOMINMAX
 #include <windows.h>
 #include <vector>
 #include <string>
 #include <fstream>
 #include <algorithm>
+#include <sstream>
 #include <CommCtrl.h>
 #include <winternl.h>
 #include <gdiplus.h>
@@ -25,21 +27,7 @@ using namespace Gdiplus;
 // NT API types
 typedef NTSTATUS(NTAPI* pNtUnmapViewOfSection)(HANDLE, PVOID);
 
-// Control IDs
-#define ID_BTN_SAVE 1001
-#define ID_BTN_NUKE 1002
-#define ID_EDIT_ACCOUNT 2001
-#define ID_EDIT_ACCESS_KEY 2002
-#define ID_EDIT_SECRET_KEY 2003
-#define ID_EDIT_LOGS 2004
-#define ID_BTN_CANCEL 1003
-#define ID_CHK_SHOW_SECRET 4004
-#define ID_INDICATOR_IME 5001
-#define ID_INDICATOR_CAPS 5002
-
-// Region Checkbox IDs
-#define ID_CHK_REGION_START 3000
-#define ID_CHK_SELECT_ALL 3999
+#include "resource.h"
 
 typedef struct {
     std::wstring name;
@@ -55,7 +43,7 @@ std::vector<AWSRegion> g_regions = {
     {L"sa-east-1", false}, {L"global", true}
 };
 
-HWND g_hAccount, g_hAccessKey, g_hSecretKey, g_hLogs, g_hBtnSave, g_hBtnNuke, g_hBtnCancel, g_hChkShowSecret, g_hImeIndicator, g_hCapsIndicator, g_hResourceFilter;
+HWND g_hAccount, g_hAccessKey, g_hSecretKey, g_hLogs, g_hBtnSave, g_hBtnNuke, g_hBtnCancel, g_hChkShowSecret, g_hImeIndicator, g_hCapsIndicator, g_hResourceFilter, g_hSortCombo;
 HWND g_hwndSelectAll = NULL;
 std::vector<int> g_filteredIndices; // Indices into g_resourceInfos for the current filter
 bool g_isFiltering = false;
@@ -139,7 +127,19 @@ int GetFuzzyScore(const std::wstring& search, const std::wstring& target) {
 
 void FilterResourceList(const std::wstring& search) {
     g_filteredIndices.clear();
-    if (search.empty()) {
+    
+    std::vector<std::wstring> keywords;
+    std::wstringstream ss(search);
+    std::wstring word;
+    while (ss >> word) {
+        if (!word.empty()) {
+            std::wstring kw = word;
+            for (auto& c : kw) c = towlower(c);
+            keywords.push_back(kw);
+        }
+    }
+
+    if (keywords.empty()) {
         for (int i = 0; i < g_numResourceTypes; ++i) g_filteredIndices.push_back(i);
         return;
     }
@@ -148,23 +148,65 @@ void FilterResourceList(const std::wstring& search) {
     std::vector<ScoredIndex> candidates;
 
     for (int i = 0; i < g_numResourceTypes; ++i) {
-        int engScore = GetFuzzyScore(search, g_resourceInfos[i].eng);
-        int korScore = GetFuzzyScore(search, g_resourceInfos[i].kor);
-        int maxScore = (engScore > korScore) ? engScore : korScore;
+        int totalScore = 0;
+        const ResourceInfo& info = g_resourceInfos[i];
+        bool allMatch = true;
 
-        if (maxScore > 0) {
-            candidates.push_back({ i, maxScore });
+        for (const auto& kw : keywords) {
+            int maxKwScore = 0;
+            
+            // Name fuzzy scores
+            maxKwScore = std::max(maxKwScore, GetFuzzyScore(kw, info.eng));
+            maxKwScore = std::max(maxKwScore, GetFuzzyScore(kw, info.kor));
+
+            // Tag match score
+            std::wstring tags = info.tags;
+            for (auto& c : tags) c = towlower(c);
+            
+            if (tags.find(kw) != std::wstring::npos) {
+                int tagScore = 2000;
+                if (kw[0] == L'#') tagScore += 2000; // Bonus for explicit tag
+                maxKwScore = std::max(maxKwScore, tagScore);
+            }
+
+            if (maxKwScore > 0) {
+                totalScore += maxKwScore;
+            } else {
+                allMatch = false; // All keywords must match (AND logic)
+                break;
+            }
+        }
+
+        if (allMatch && totalScore > 0) {
+            candidates.push_back({ i, totalScore });
         }
     }
 
-    // Sort by score descending
-    std::sort(candidates.begin(), candidates.end(), [](const ScoredIndex& a, const ScoredIndex& b) {
-        return a.score > b.score;
+    // Get current sort selection
+    int sortIdx = (int)SendMessage(g_hSortCombo, CB_GETCURSEL, 0, 0);
+
+    std::sort(candidates.begin(), candidates.end(), [sortIdx](const ScoredIndex& a, const ScoredIndex& b) {
+        if (sortIdx == 1) { // Relevance (Score)
+            if (a.score != b.score) return a.score > b.score;
+        } else if (sortIdx == 2) { // Service (Category)
+            // Heuristic service prefix
+            auto getSvc = [](const wchar_t* eng) {
+                if (wcsncmp(eng, L"EC2", 3) == 0) return 1;
+                if (wcsncmp(eng, L"S3", 2) == 0) return 2;
+                if (wcsncmp(eng, L"RDS", 3) == 0) return 3;
+                if (wcsncmp(eng, L"IAM", 3) == 0) return 4;
+                if (wcsncmp(eng, L"Lambda", 6) == 0) return 5;
+                return 99;
+            };
+            int sa = getSvc(g_resourceInfos[a.idx].eng);
+            int sb = getSvc(g_resourceInfos[b.idx].eng);
+            if (sa != sb) return sa < sb;
+        }
+        // Fallback to Alphabetical
+        return wcscmp(g_resourceInfos[a.idx].eng, g_resourceInfos[b.idx].eng) < 0;
     });
 
     for (auto& c : candidates) g_filteredIndices.push_back(c.idx);
-    
-    // If no matches, fallback to showing all (optional, but let's keep it empty for better feedback)
 }
 
 void LoadMTAConfig() {
@@ -667,6 +709,14 @@ LRESULT CALLBACK WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) 
 
         CreateWindow(L"STATIC", L"Resource Filter :", WS_VISIBLE | WS_CHILD, 20, startY + 90, 120, 20, hwnd, NULL, NULL, NULL);
         g_hResourceFilter = CreateWindow(L"COMBOBOX", L"", WS_VISIBLE | WS_CHILD | CBS_DROPDOWN | CBS_OWNERDRAWFIXED | WS_VSCROLL, 150, startY + 87, 250, 400, hwnd, (HMENU)ID_COMBO_RESOURCE, NULL, NULL);
+        
+        // Sorting ComboBox
+        g_hSortCombo = CreateWindow(L"COMBOBOX", L"", WS_VISIBLE | WS_CHILD | CBS_DROPDOWNLIST, 410, startY + 87, 120, 200, hwnd, (HMENU)ID_COMBO_SORT, NULL, NULL);
+        SendMessage(g_hSortCombo, CB_ADDSTRING, 0, (LPARAM)L"이름순 (A-Z)");
+        SendMessage(g_hSortCombo, CB_ADDSTRING, 0, (LPARAM)L"관련도순");
+        SendMessage(g_hSortCombo, CB_ADDSTRING, 0, (LPARAM)L"서비스별");
+        SendMessage(g_hSortCombo, CB_SETCURSEL, 1, 0); // Default to Relevance (Score)
+
         FilterResourceList(L"");
         for (int idx : g_filteredIndices) SendMessage(g_hResourceFilter, CB_ADDSTRING, 0, (LPARAM)g_resourceInfos[idx].eng);
         SendMessage(g_hResourceFilter, CB_SETCURSEL, 0, 0);
@@ -859,7 +909,26 @@ LRESULT CALLBACK WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) 
             rcEng.left = rcKor.right + 5;
             SelectObject(hdc, g_hFontNorm); // Use global normal font for English sub-text
             SetTextColor(hdc, (pdis->itemState & ODS_SELECTED) ? GetSysColor(COLOR_HIGHLIGHTTEXT) : RGB(100, 100, 100));
+            DrawText(hdc, eng, -1, &rcEng, DT_SINGLELINE | DT_VCENTER | DT_END_ELLIPSIS | DT_CALCRECT);
             DrawText(hdc, eng, -1, &rcEng, DT_SINGLELINE | DT_VCENTER | DT_END_ELLIPSIS);
+
+            // Draw Tags (Hashtags) at the far right
+            std::wstring infoTags = g_resourceInfos[realIdx].tags;
+            // Show only first 2-3 tags to keep it clean
+            size_t thirdSpace = 0;
+            int spaceCount = 0;
+            for (size_t i = 0; i < infoTags.length(); ++i) {
+                if (infoTags[i] == L' ') {
+                    if (++spaceCount == 4) { thirdSpace = i; break; }
+                }
+            }
+            if (thirdSpace > 0) infoTags = infoTags.substr(0, thirdSpace) + L"...";
+
+            RECT rcTags = rc;
+            rcTags.right -= 10;
+            SelectObject(hdc, g_hFontIndicator); // Use smaller/bold font for tags
+            SetTextColor(hdc, (pdis->itemState & ODS_SELECTED) ? GetSysColor(COLOR_HIGHLIGHTTEXT) : RGB(0, 150, 200));
+            DrawText(hdc, infoTags.c_str(), -1, &rcTags, DT_SINGLELINE | DT_VCENTER | DT_RIGHT | DT_END_ELLIPSIS);
 
             SetTextColor(hdc, oldText);
             SetBkMode(hdc, oldBkMode);
@@ -996,6 +1065,11 @@ LRESULT CALLBACK WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) 
             SendMessage(g_hSecretKey, EM_SETPASSWORDCHAR, (checked ? 0 : (WPARAM)L'●'), 0);
             SetFocus(g_hSecretKey); // Force update
             InvalidateRect(g_hSecretKey, NULL, TRUE);
+        }
+        if (id == ID_COMBO_SORT && code == CBN_SELCHANGE) {
+            wchar_t search[128];
+            GetWindowText(g_hResourceFilter, search, 128);
+            SendMessage(hwnd, WM_COMMAND, MAKEWPARAM(ID_COMBO_RESOURCE, CBN_EDITCHANGE), (LPARAM)g_hResourceFilter);
         }
         if (id == ID_COMBO_RESOURCE && code == CBN_EDITCHANGE) {
             if (g_isFiltering || g_isIMEComposing) return 0;
