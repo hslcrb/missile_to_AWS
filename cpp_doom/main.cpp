@@ -64,6 +64,7 @@ HFONT g_hFontBold = NULL, g_hFontPrefix = NULL, g_hFontIndicator = NULL, g_hFont
 HANDLE g_hFontRes = NULL;
 HBRUSH g_hBrushNavy = NULL, g_hBrushRed = NULL, g_hBrushPureRed = NULL, g_hBrushYellow = NULL;
 int g_protectedTerminalLength = 0;
+std::vector<std::wstring> g_logHistory;
 const wchar_t* g_datHashes[] = {
     L"1D7F4830EE717F11C1189BBDA968B2397E149439489B8E2D29E430A069D51E08", L"843B6E4AA430D5D27A7CE6F6655025E32542683D0F24228E5BB0E00B3E03D3E8", L"A40DCD054C2C7F47D93C6939007A2E6E547C9C98F8823CCDD05BD9D179749172", L"8CBE924B5DF6D7D5BAD85261A4F31D057F45CFF4553466D441ECED7EC9860420", L"7195F2256A249242B696076C926CF54E09AF6B90E948D1F17D88CC5B47D7E2BF", L"8AA2CCA1D7ABE2C59536363BF9E2826D77645C59183C87584EE759F6B71BBE3E", L"6C020002512002DDD1C4E93193EAFEDB73D4DD259A69E557F6EA992BFD67A422", L"1F15DB8D6E59FB337F8032C46D8F9BB7A94BFCBAEF37BEE849BAD831F8D8A6EF", L"BAD7D161ABEA3B35A5F8374FCBAC8A54EA8CC695B5A2574D388E17ABA6C11EC7", L"54327FAC4CC0E14F548D174DFCA8EE4FC2ADF781AE14570704DB181B3D152BA0", L"33DD197862CE7A242EAAE86B95454E5D5D74AE5EF5F0491F4F65322F9DA13DEE", L"E9BBDDB10BB60052BA8CC9D2E5A34CCFE2D611F147785AE6E42533B4E401A67A", L"FEE6E368FD67271EEAF7E8E4EF8ACA02D527972B38AD6CF69E8A59C80DC061FA", L"B6D382F33AA9FF618B9A99185DAD47C610ACF7B91ECCA44C42A60447CD5EE288", L"4139AEF2DA5711208341205A568B94DCD9F67F7510C07EA55D4061994B0BB4D1"
 };
@@ -490,6 +491,8 @@ HBITMAP LoadPNGFromResource(int resID, int targetWidth, int& outHeight, float op
 void AppendLog(const std::wstring& text) {
     if (text.empty()) return;
 
+    g_logHistory.push_back(text);
+
     int len = GetWindowTextLength(g_hLogs);
     SendMessage(g_hLogs, EM_SETSEL, (WPARAM)len, (LPARAM)len);
     SendMessage(g_hLogs, EM_REPLACESEL, 0, (LPARAM)text.c_str());
@@ -709,7 +712,22 @@ void SaveFiles(HWND hwnd) {
     mta_file << L"  \"account_id\": \"" << account << L"\",\n";
     mta_file << L"  \"access_key\": \"" << access << L"\",\n";
     mta_file << L"  \"secret_key\": \"" << secret << L"\",\n";
-    mta_file << L"  \"show_secret\": " << (SendMessage(g_hChkShowSecret, BM_GETCHECK, 0, 0) == BST_CHECKED ? L"true" : L"false") << L"\n";
+    mta_file << L"  \"show_secret\": " << (SendMessage(g_hChkShowSecret, BM_GETCHECK, 0, 0) == BST_CHECKED ? L"true" : L"false") << L",\n";
+    mta_file << L"  \"history\": [\n";
+    for (size_t i = 0; i < g_logHistory.size(); ++i) {
+        std::wstring line = g_logHistory[i];
+        // Basic escaping
+        std::wstring escaped;
+        for (wchar_t c : line) {
+            if (c == L'\"') escaped += L"\\\"";
+            else if (c == L'\\') escaped += L"\\\\";
+            else if (c == L'\n') escaped += L"\\n";
+            else if (c == L'\r') escaped += L"\\r";
+            else escaped += c;
+        }
+        mta_file << L"    \"" << escaped << L"\"" << (i == g_logHistory.size() - 1 ? L"" : L",") << L"\n";
+    }
+    mta_file << L"  ]\n";
     mta_file << L"}\n";
     mta_file.close();
 }
@@ -720,7 +738,7 @@ DWORD WINAPI SaveFilesAsync(LPVOID lpParam) {
     SaveFiles(hwnd);
     g_isWorking = false;
     PostMessage(hwnd, WM_SETCURSOR, (WPARAM)hwnd, HTCLIENT); // Refresh cursor
-    MessageBox(hwnd, L"Settings saved to external/ and _mta.json.", L"Success", MB_OK | MB_ICONINFORMATION);
+    AppendLog(L"[INFO] 설정이 external/ 및 _mta.json에 성공적으로 저장되었습니다.\r\n");
     return 0;
 }
 
