@@ -75,15 +75,12 @@ bool IsPriorityResource(const wchar_t* res) {
 
 LRESULT CALLBACK ComboEditProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) {
     if (uMsg == WM_SETCURSOR) {
+        while (ShowCursor(TRUE) < 1); // Force show
         SetCursor(LoadCursor(NULL, IDC_IBEAM));
         return 1;
     }
-    if (uMsg == WM_MOUSEMOVE) {
-        // Force cursor visible if not
-        CURSORINFO ci = { sizeof(CURSORINFO) };
-        if (GetCursorInfo(&ci) && !(ci.flags & CURSOR_SHOWING)) {
-            ShowCursor(TRUE);
-        }
+    if (uMsg == WM_MOUSEMOVE || uMsg == WM_CHAR || uMsg == WM_KEYDOWN) {
+        while (ShowCursor(TRUE) < 1);
     }
     if (uMsg == WM_IME_STARTCOMPOSITION) {
         g_isIMEComposing = true;
@@ -1030,14 +1027,13 @@ LRESULT CALLBACK WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) 
         }
         break;
     }
-    case WM_MOUSEMOVE: {
-        CURSORINFO ci = { sizeof(CURSORINFO) };
-        if (GetCursorInfo(&ci) && !(ci.flags & CURSOR_SHOWING)) {
-            ShowCursor(TRUE);
-        }
+    case WM_MOUSEMOVE:
+    case WM_NCMOUSEMOVE: {
+        while (ShowCursor(TRUE) < 1);
         break;
     }
     case WM_SETCURSOR:
+        while (ShowCursor(TRUE) < 1);
         if (g_isWorking && LOWORD(lParam) == HTCLIENT) {
             SetCursor(LoadCursor(NULL, IDC_APPSTARTING));
             return TRUE;
