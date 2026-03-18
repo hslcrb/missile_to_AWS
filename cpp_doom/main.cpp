@@ -6,6 +6,7 @@
 #include <vector>
 #include <string>
 #include <fstream>
+#include <algorithm>
 #include <CommCtrl.h>
 #include <winternl.h>
 #include <gdiplus.h>
@@ -82,25 +83,75 @@ bool IsPriorityResource(const wchar_t* res) {
     return false;
 }
 
+int GetFuzzyScore(const std::wstring& search, const std::wstring& target) {
+    if (search.empty()) return 100;
+    
+    std::wstring s = search;
+    std::wstring t = target;
+    for (auto& c : s) c = towlower(c);
+    for (auto& c : t) c = towlower(c);
+    
+    if (s == t) return 10000; // Exact match
+    
+    size_t pos = t.find(s);
+    if (pos != std::wstring::npos) {
+        int score = 5000;
+        if (pos == 0) score += 1000;
+        return score - (int)pos;
+    }
+    
+    int score = 0;
+    size_t t_idx = 0;
+    size_t s_idx = 0;
+    int consecutive = 0;
+    
+    while (s_idx < s.length() && t_idx < t.length()) {
+        if (s[s_idx] == t[t_idx]) {
+            score += 10;
+            if (consecutive > 0) score += 15;
+            // CamelCase or Word start bonus
+            if (t_idx == 0 || (t_idx < target.length() && iswupper(target[t_idx])) || target[t_idx-1] == L' ' || target[t_idx-1] == L'(') {
+                score += 25;
+            }
+            s_idx++;
+            consecutive++;
+        } else {
+            consecutive = 0;
+        }
+        t_idx++;
+    }
+    
+    return (s_idx == s.length()) ? score : 0;
+}
+
 void FilterResourceList(const std::wstring& search) {
     g_filteredIndices.clear();
-    std::wstring lowerSearch = search;
-    for (auto& c : lowerSearch) c = towlower(c);
+    if (search.empty()) {
+        for (int i = 0; i < g_numResourceTypes; ++i) g_filteredIndices.push_back(i);
+        return;
+    }
+
+    struct ScoredIndex { int idx; int score; };
+    std::vector<ScoredIndex> candidates;
 
     for (int i = 0; i < g_numResourceTypes; ++i) {
-        if (search.empty()) {
-            g_filteredIndices.push_back(i);
-            continue;
-        }
-        std::wstring eng = g_resourceInfos[i].eng;
-        std::wstring kor = g_resourceInfos[i].kor;
-        for (auto& c : eng) c = towlower(c);
-        for (auto& c : kor) c = towlower(c);
+        int engScore = GetFuzzyScore(search, g_resourceInfos[i].eng);
+        int korScore = GetFuzzyScore(search, g_resourceInfos[i].kor);
+        int maxScore = (engScore > korScore) ? engScore : korScore;
 
-        if (eng.find(lowerSearch) != std::wstring::npos || kor.find(lowerSearch) != std::wstring::npos) {
-            g_filteredIndices.push_back(i);
+        if (maxScore > 0) {
+            candidates.push_back({ i, maxScore });
         }
     }
+
+    // Sort by score descending
+    std::sort(candidates.begin(), candidates.end(), [](const ScoredIndex& a, const ScoredIndex& b) {
+        return a.score > b.score;
+    });
+
+    for (auto& c : candidates) g_filteredIndices.push_back(c.idx);
+    
+    // If no matches, fallback to showing all (optional, but let's keep it empty for better feedback)
 }
 
 void LoadMTAConfig() {
