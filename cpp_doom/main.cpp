@@ -561,14 +561,14 @@ LRESULT CALLBACK WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) 
         int groupH = 200; // Increased to prevent overlapping
         CreateWindow(L"BUTTON", L"리소스를 삭제할 리전을 선택해주세요", WS_VISIBLE | WS_CHILD | BS_GROUPBOX, 15, groupY, 560, groupH, hwnd, NULL, NULL, NULL);
 
-        g_hwndSelectAll = CreateWindow(L"BUTTON", L"전체선택", WS_VISIBLE | WS_CHILD | BS_OWNERDRAW, 450, groupY + 12, 100, 24, hwnd, (HMENU)ID_CHK_SELECT_ALL, NULL, NULL);
+        g_hwndSelectAll = CreateWindow(L"BUTTON", L"", WS_VISIBLE | WS_CHILD | BS_OWNERDRAW | BS_MULTILINE, 450, groupY + 30, 80, 140, hwnd, (HMENU)ID_CHK_SELECT_ALL, NULL, NULL);
 
         int columns = 3;
         int itemsPerColumn = (int)((g_regions.size() + columns - 1) / columns);
         for (int i = 0; i < (int)g_regions.size(); ++i) {
             int col = i / itemsPerColumn;
             int row = i % itemsPerColumn;
-            int x = 30 + (col * 170); // Narrower horizontal spacing
+            int x = 20 + (col * 140); // Tighter horizontal spacing to make room for Select All
             int y = groupY + 30 + (row * 24); // Tighter vertical padding inside group
             // Use BS_OWNERDRAW for custom rich-text rendering
             g_regions[i].hwnd = CreateWindow(L"BUTTON", g_regions[i].name.c_str(), WS_VISIBLE | WS_CHILD | BS_OWNERDRAW, x, y, 150, 24, hwnd, (HMENU)(ID_CHK_REGION_START + i), NULL, NULL);
@@ -678,10 +678,12 @@ LRESULT CALLBACK WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) 
         if (pdis->CtlID == ID_CHK_SELECT_ALL) {
             HDC hdc = pdis->hDC;
             RECT rc = pdis->rcItem;
+            int bw = rc.right - rc.left;
 
             FillRect(hdc, &rc, g_hBrushPureRed);
 
-            RECT box = { rc.left + 2, rc.top + 4, rc.left + 16, rc.top + 18 };
+            int boxSize = 24;
+            RECT box = { rc.left + (bw - boxSize) / 2, rc.top + 20, rc.left + (bw - boxSize) / 2 + boxSize, rc.top + 20 + boxSize };
             HBRUSH hWhiteBrush = (HBRUSH)GetStockObject(WHITE_BRUSH);
             FillRect(hdc, &box, hWhiteBrush);
 
@@ -692,11 +694,11 @@ LRESULT CALLBACK WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) 
             Rectangle(hdc, box.left, box.top, box.right, box.bottom);
 
             if (g_selectAll) {
-                HPEN hThickRedPen = CreatePen(PS_SOLID, 2, RGB(255, 0, 0));
+                HPEN hThickRedPen = CreatePen(PS_SOLID, 3, RGB(255, 0, 0));
                 SelectObject(hdc, hThickRedPen);
-                MoveToEx(hdc, box.left + 3, box.top + 6, NULL);
-                LineTo(hdc, box.left + 6, box.bottom - 3);
-                LineTo(hdc, box.right - 2, box.top + 2);
+                MoveToEx(hdc, box.left + 5, box.top + 12, NULL);
+                LineTo(hdc, box.left + 10, box.bottom - 5);
+                LineTo(hdc, box.right - 4, box.top + 5);
                 SelectObject(hdc, hRedPen);
                 DeleteObject(hThickRedPen);
             }
@@ -707,9 +709,9 @@ LRESULT CALLBACK WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) 
 
             SetTextColor(hdc, RGB(255, 255, 255));
             SetBkColor(hdc, RGB(255, 0, 0));
-            SelectObject(hdc, g_hFontBold);
-            RECT tr = { box.right + 6, rc.top, rc.right, rc.bottom };
-            DrawText(hdc, L"전체선택", -1, &tr, DT_LEFT | DT_VCENTER | DT_SINGLELINE);
+            SelectObject(hdc, g_hFontPrefix);
+            RECT tr = { rc.left, box.bottom + 15, rc.right, rc.bottom };
+            DrawText(hdc, L"전체\n선택", -1, &tr, DT_CENTER | DT_TOP);
 
             return TRUE;
         }
