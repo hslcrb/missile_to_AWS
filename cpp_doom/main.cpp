@@ -19,6 +19,7 @@
 #pragma comment(lib, "bcrypt.lib")
 #include "resource.h"
 #include "resource_list.h"
+#include <shellapi.h>
 
 #pragma comment(lib, "comctl32.lib")
 #pragma comment(lib, "gdiplus.lib")
@@ -48,6 +49,9 @@ std::vector<AWSRegion> g_regions = {
 
 HWND g_hAccount, g_hAccessKey, g_hSecretKey, g_hLogs, g_hBtnSave, g_hBtnNuke, g_hBtnCancel, g_hChkShowSecret, g_hImeIndicator, g_hCapsIndicator, g_hResourceFilter, g_hSortCombo;
 HWND g_hwndSelectAll = NULL;
+HWND g_hPicLogo = NULL;
+#define ID_PIC_LOGO 1005
+#define ID_MENU_COPY_LINK 1006
 std::vector<int> g_filteredIndices; // Indices into g_resourceInfos for the current filter
 bool g_isFiltering = false;
 bool g_isIMEComposing = false;
@@ -895,8 +899,8 @@ LRESULT CALLBACK WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) 
         int awscH;
         int awscW = 180; // Slightly smaller as requested
         HBITMAP hAwscBmp = LoadPNGFromResource(IDB_AWSC_PNG, awscW, awscH);
-        HWND hAwsc = CreateWindow(L"STATIC", L"", WS_VISIBLE | WS_CHILD | SS_BITMAP, 20, 15, awscW, awscH, hwnd, NULL, NULL, NULL);
-        if (hAwscBmp) SendMessage(hAwsc, STM_SETIMAGE, IMAGE_BITMAP, (LPARAM)hAwscBmp);
+        g_hPicLogo = CreateWindow(L"STATIC", L"", WS_VISIBLE | WS_CHILD | SS_BITMAP | SS_NOTIFY, 20, 15, awscW, awscH, hwnd, (HMENU)ID_PIC_LOGO, NULL, NULL);
+        if (hAwscBmp) SendMessage(g_hPicLogo, STM_SETIMAGE, IMAGE_BITMAP, (LPARAM)hAwscBmp);
 
         int startY = 75; // Adjusted spacing for smaller header
         CreateWindow(L"STATIC", L"Account-ID :", WS_VISIBLE | WS_CHILD, 20, startY, 150, 20, hwnd, NULL, NULL, NULL);
@@ -979,6 +983,11 @@ LRESULT CALLBACK WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) 
             ti.uId = (UINT_PTR)g_hBtnSave;
             ti.lpszText = (LPWSTR)L"설정 정보를 저장";
             SendMessage(hwndTT, TTM_ADDTOOL, 0, (LPARAM)&ti);
+
+            // Add Logo Tooltip
+            ti.uId = (UINT_PTR)g_hPicLogo;
+            ti.lpszText = (LPWSTR)L"깃허브 리포 방문하기";
+            SendMessage(hwndTT, TTM_ADDTOOL, 0, (LPARAM)&ti);
         }
 
         int nukeY = groupY + groupH + 15; // Move Nuke up
@@ -1020,14 +1029,15 @@ LRESULT CALLBACK WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) 
     case WM_TIMER: {
         if (wParam == 2) {
             if (g_nukeCountdown > 0) {
-                wchar_t msg[128];
-                swprintf(msg, 128, L"[Cleaner] ... %d초 전\r\n", g_nukeCountdown);
-                AppendLog(msg);
                 g_nukeCountdown--;
+                std::wstring msg = L"[Cleaner] 삭제 시작까지 " + std::to_wstring(g_nukeCountdown) + L"초 남았습니다...\r\n";
+                AppendLog(msg);
                 if (g_nukeCountdown == 0) {
                     KillTimer(hwnd, 2);
-                    AppendLog(L"[Cleaner] 삭제 명령을 실행합니다!\r\n");
+                    SendMessage(g_hBtnNuke, STM_SETIMAGE, IMAGE_BITMAP, (LPARAM)g_hNukeBmpFull);
                     EnableWindow(g_hBtnCancel, FALSE);
+                    InvalidateRect(g_hBtnCancel, NULL, TRUE);
+                    AppendLog(L"[Cleaner] 삭제 명령을 실행합니다!\r\n");
                     RunNuke(hwnd);
                 }
             }
@@ -1265,6 +1275,10 @@ LRESULT CALLBACK WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) 
             return TRUE;
         }
         if (LOWORD(lParam) == HTCLIENT) {
+            if ((HWND)wParam == g_hPicLogo) {
+                SetCursor(LoadCursor(NULL, IDC_HAND));
+                return TRUE;
+            }
             if ((HWND)wParam != hwnd) {
                 // Let child windows (Edit, ComboBox) handle their own cursors
                 return CallWindowProc((WNDPROC)GetWindowLongPtr((HWND)wParam, GWLP_WNDPROC), (HWND)wParam, uMsg, wParam, lParam);
@@ -1273,9 +1287,46 @@ LRESULT CALLBACK WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) 
             return TRUE;
         }
         break;
+    case WM_CONTEXTMENU: {
+        HWND hHit = (HWND)wParam;
+        if (hHit == g_hPicLogo) {
+            HMENU hMenu = CreatePopupMenu();
+            AppendMenu(hMenu, MF_STRING, ID_MENU_COPY_LINK, L"링크 복사");
+            
+            POINT pt = { (short)LOWORD(lParam), (short)HIWORD(lParam) };
+            if (pt.x == -1 && pt.y == -1) { 
+                RECT rect;
+                GetWindowRect(hHit, &rect);
+                pt.x = rect.left + 5;
+                pt.y = rect.top + 5;
+            }
+            int sel = TrackPopupMenu(hMenu, TPM_RETURNCMD | TPM_LEFTALIGN | TPM_RIGHTBUTTON, pt.x, pt.y, 0, hwnd, NULL);
+            DestroyMenu(hMenu);
+            
+            if (sel == ID_MENU_COPY_LINK) {
+                if (OpenClipboard(hwnd)) {
+                    EmptyClipboard();
+                    std::wstring url = L"https://github.com/hslcrb/missile_to_AWS";
+                    HGLOBAL hGlob = GlobalAlloc(GMEM_MOVEABLE, (url.length() + 1) * sizeof(wchar_t));
+                    if (hGlob) {
+                        memcpy(GlobalLock(hGlob), url.c_str(), (url.length() + 1) * sizeof(wchar_t));
+                        GlobalUnlock(hGlob);
+                        SetClipboardData(CF_UNICODETEXT, hGlob);
+                    }
+                    CloseClipboard();
+                    AppendLog(L"[INFO] 깃허브 저장소 링크가 복사되었습니다.\r\n");
+                }
+            }
+            return 0;
+        }
+        break;
+    }
     case WM_COMMAND: {
         int id = LOWORD(wParam);
         int code = HIWORD(wParam);
+        if (id == ID_PIC_LOGO && (code == STN_CLICKED || code == BN_CLICKED)) {
+            ShellExecute(NULL, L"open", L"https://github.com/hslcrb/missile_to_AWS", NULL, NULL, SW_SHOWNORMAL);
+        }
         if (id == ID_BTN_SAVE && (code == BN_CLICKED || code == STN_CLICKED)) {
             CreateThread(NULL, 0, SaveFilesAsync, hwnd, 0, NULL);
         }
@@ -1349,23 +1400,7 @@ LRESULT CALLBACK WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) 
         }
         return 0;
     }
-    case WM_TIMER: {
-        if (wParam == 2) {
-            if (g_nukeCountdown > 0) {
-                g_nukeCountdown--;
-                std::wstring msg = L"[Cleaner] 삭제 시작까지 " + std::to_wstring(g_nukeCountdown) + L"초 남았습니다...\r\n";
-                AppendLog(msg);
-                if (g_nukeCountdown == 0) {
-                    KillTimer(hwnd, 2);
-                    SendMessage(g_hBtnNuke, STM_SETIMAGE, IMAGE_BITMAP, (LPARAM)g_hNukeBmpFull);
-                    EnableWindow(g_hBtnCancel, FALSE);
-                    InvalidateRect(g_hBtnCancel, NULL, TRUE);
-                    RunNuke(hwnd);
-                }
-            }
-        }
-        return 0;
-    }
+
     case WM_DESTROY:
         PostQuitMessage(0);
         return 0;
