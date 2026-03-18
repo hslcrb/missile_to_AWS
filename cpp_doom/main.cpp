@@ -82,6 +82,25 @@ LRESULT CALLBACK ComboEditProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lPara
     if (uMsg == WM_MOUSEMOVE || uMsg == WM_CHAR || uMsg == WM_KEYDOWN) {
         while (ShowCursor(TRUE) < 1);
     }
+    if (uMsg == WM_KEYDOWN && wParam == VK_RETURN) {
+        HWND hCombo = GetParent(hwnd);
+        if (SendMessage(hCombo, CB_GETDROPPEDSTATE, 0, 0)) {
+            int sel = (int)SendMessage(hCombo, CB_GETCURSEL, 0, 0);
+            if (sel != CB_ERR) {
+                // If something is highlighted, select it
+                // Note: CB_GETCURSEL usually returns the highlighted item while dropped
+            } else {
+                // If nothing highlighted but list is not empty, select first
+                if (SendMessage(hCombo, CB_GETCOUNT, 0, 0) > 0) {
+                    SendMessage(hCombo, CB_SETCURSEL, 0, 0);
+                }
+            }
+            SendMessage(hCombo, CB_SHOWDROPDOWN, FALSE, 0);
+            // Trigger SELCHANGE to update any dependent UI (like tag view or filter state)
+            PostMessage(GetParent(hCombo), WM_COMMAND, MAKEWPARAM(ID_COMBO_RESOURCE, CBN_SELCHANGE), (LPARAM)hCombo);
+            return 0;
+        }
+    }
     if (uMsg == WM_IME_STARTCOMPOSITION) {
         g_isIMEComposing = true;
     } else if (uMsg == WM_IME_ENDCOMPOSITION) {
