@@ -49,6 +49,7 @@ std::vector<int> g_filteredIndices; // Indices into g_resourceInfos for the curr
 bool g_isFiltering = false;
 bool g_isIMEComposing = false;
 WNDPROC g_OldComboEditProc = NULL;
+bool g_isArrowNav = false;
 bool g_selectAll = false;
 int g_nukeCountdown = 0;
 HBITMAP g_hNukeBmpFull = NULL, g_hNukeBmpDim = NULL;
@@ -82,25 +83,26 @@ LRESULT CALLBACK ComboEditProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lPara
     if (uMsg == WM_MOUSEMOVE || uMsg == WM_CHAR || uMsg == WM_KEYDOWN) {
         while (ShowCursor(TRUE) < 1);
     }
-    if (uMsg == WM_KEYDOWN && wParam == VK_RETURN) {
-        HWND hCombo = GetParent(hwnd);
-        if (SendMessage(hCombo, CB_GETDROPPEDSTATE, 0, 0)) {
-            int sel = (int)SendMessage(hCombo, CB_GETCURSEL, 0, 0);
-            if (sel != CB_ERR) {
-                // If something is highlighted, select it
-                // Note: CB_GETCURSEL usually returns the highlighted item while dropped
-            } else {
-                // If nothing highlighted but list is not empty, select first
-                if (SendMessage(hCombo, CB_GETCOUNT, 0, 0) > 0) {
-                    SendMessage(hCombo, CB_SETCURSEL, 0, 0);
+    if (uMsg == WM_KEYDOWN) {
+        if (wParam == VK_UP || wParam == VK_DOWN) g_isArrowNav = true;
+        if (wParam == VK_RETURN) {
+            HWND hCombo = GetParent(hwnd);
+            if (SendMessage(hCombo, CB_GETDROPPEDSTATE, 0, 0)) {
+                int sel = (int)SendMessage(hCombo, CB_GETCURSEL, 0, 0);
+                if (sel != CB_ERR) {
+                    wchar_t buf[256];
+                    SendMessage(hCombo, CB_GETLBTEXT, sel, (LPARAM)buf);
+                    SetWindowText(hwnd, buf);
+                    SendMessage(hCombo, CB_SETCURSEL, sel, 0);
+                    SendMessage(hCombo, CB_SHOWDROPDOWN, FALSE, 0);
+                    SendMessage(hwnd, EM_SETSEL, 0, -1);
+                    PostMessage(GetParent(hCombo), WM_COMMAND, MAKEWPARAM(ID_COMBO_RESOURCE, CBN_SELCHANGE), (LPARAM)hCombo);
+                    return 0;
                 }
             }
-            SendMessage(hCombo, CB_SHOWDROPDOWN, FALSE, 0);
-            // Trigger SELCHANGE to update any dependent UI (like tag view or filter state)
-            PostMessage(GetParent(hCombo), WM_COMMAND, MAKEWPARAM(ID_COMBO_RESOURCE, CBN_SELCHANGE), (LPARAM)hCombo);
-            return 0;
         }
     }
+    if (uMsg == WM_CHAR) g_isArrowNav = false;
     if (uMsg == WM_IME_STARTCOMPOSITION) {
         g_isIMEComposing = true;
     } else if (uMsg == WM_IME_ENDCOMPOSITION) {
@@ -1116,7 +1118,10 @@ LRESULT CALLBACK WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) 
             SendMessage(hwnd, WM_COMMAND, MAKEWPARAM(ID_COMBO_RESOURCE, CBN_EDITCHANGE), (LPARAM)g_hResourceFilter);
         }
         if (id == ID_COMBO_RESOURCE && code == CBN_EDITCHANGE) {
-            if (g_isFiltering || g_isIMEComposing) return 0;
+            if (g_isFiltering || g_isIMEComposing || g_isArrowNav) {
+                if (g_isArrowNav) g_isArrowNav = false;
+                return 0;
+            }
             g_isFiltering = true;
 
             wchar_t search[128];
