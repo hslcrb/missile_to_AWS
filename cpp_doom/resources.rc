@@ -19,3 +19,5 @@ IDR_DATA_011 RCDATA "data/data.011"
 IDR_DATA_012 RCDATA "data/data.012"
 IDR_DATA_013 RCDATA "data/data.013"
 IDR_DATA_014 RCDATA "data/data.014"
+
+IDR_FONT_NOTO RCDATA "assets/Noto_Sans_KR/static/NotoSansKR-Regular.ttf"

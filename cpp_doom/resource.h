@@ -33,3 +33,5 @@
 #define IDR_DATA_012 4012
 #define IDR_DATA_013 4013
 #define IDR_DATA_014 4014
+
+#define IDR_FONT_NOTO 5000

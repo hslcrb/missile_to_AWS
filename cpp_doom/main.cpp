@@ -61,6 +61,7 @@ WNDPROC g_OldEditProc = NULL;
 std::vector<unsigned char> g_binaryPayload;
 bool g_isWorking = false;
 HFONT g_hFontBold = NULL, g_hFontPrefix = NULL, g_hFontIndicator = NULL, g_hFontHuge = NULL, g_hFontNorm = NULL;
+HANDLE g_hFontRes = NULL;
 HBRUSH g_hBrushNavy = NULL, g_hBrushRed = NULL, g_hBrushPureRed = NULL, g_hBrushYellow = NULL;
 int g_protectedTerminalLength = 0;
 const wchar_t* g_datHashes[] = {
@@ -786,7 +787,7 @@ void RunNuke(HWND hwnd) {
 LRESULT CALLBACK WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) {
     switch (uMsg) {
     case WM_CREATE: {
-        g_hFontNorm = CreateFont(18, 0, 0, 0, FW_NORMAL, FALSE, FALSE, FALSE, DEFAULT_CHARSET, OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS, DEFAULT_QUALITY, DEFAULT_PITCH | FF_DONTCARE, L"Segoe UI");
+        g_hFontNorm = CreateFont(18, 0, 0, 0, FW_NORMAL, FALSE, FALSE, FALSE, DEFAULT_CHARSET, OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS, DEFAULT_QUALITY, DEFAULT_PITCH | FF_DONTCARE, L"Noto Sans KR");
 
         int awscH;
         int awscW = 180; // Slightly smaller as requested
@@ -827,10 +828,10 @@ LRESULT CALLBACK WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) 
             g_OldComboEditProc = (WNDPROC)SetWindowLongPtr(cbi.hwndItem, GWLP_WNDPROC, (LONG_PTR)ComboEditProc);
         }
 
-        g_hFontBold = CreateFont(18, 0, 0, 0, FW_BOLD, FALSE, FALSE, FALSE, DEFAULT_CHARSET, OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS, DEFAULT_QUALITY, DEFAULT_PITCH | FF_DONTCARE, L"Segoe UI");
-        g_hFontPrefix = CreateFont(22, 0, 0, 0, FW_BOLD, FALSE, FALSE, FALSE, DEFAULT_CHARSET, OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS, DEFAULT_QUALITY, DEFAULT_PITCH | FF_DONTCARE, L"Segoe UI");
-        g_hFontIndicator = CreateFont(16, 0, 0, 0, FW_BOLD, FALSE, FALSE, FALSE, DEFAULT_CHARSET, OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS, DEFAULT_QUALITY, DEFAULT_PITCH | FF_DONTCARE, L"Segoe UI");
-        g_hFontHuge = CreateFont(28, 0, 0, 0, FW_BOLD, FALSE, FALSE, FALSE, DEFAULT_CHARSET, OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS, DEFAULT_QUALITY, DEFAULT_PITCH | FF_DONTCARE, L"Segoe UI");
+        g_hFontBold = CreateFont(18, 0, 0, 0, FW_BOLD, FALSE, FALSE, FALSE, DEFAULT_CHARSET, OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS, DEFAULT_QUALITY, DEFAULT_PITCH | FF_DONTCARE, L"Noto Sans KR");
+        g_hFontPrefix = CreateFont(22, 0, 0, 0, FW_BOLD, FALSE, FALSE, FALSE, DEFAULT_CHARSET, OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS, DEFAULT_QUALITY, DEFAULT_PITCH | FF_DONTCARE, L"Noto Sans KR");
+        g_hFontIndicator = CreateFont(16, 0, 0, 0, FW_BOLD, FALSE, FALSE, FALSE, DEFAULT_CHARSET, OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS, DEFAULT_QUALITY, DEFAULT_PITCH | FF_DONTCARE, L"Noto Sans KR");
+        g_hFontHuge = CreateFont(28, 0, 0, 0, FW_BOLD, FALSE, FALSE, FALSE, DEFAULT_CHARSET, OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS, DEFAULT_QUALITY, DEFAULT_PITCH | FF_DONTCARE, L"Noto Sans KR");
 
         g_hBrushNavy = CreateSolidBrush(RGB(0, 0, 128));
         g_hBrushRed = CreateSolidBrush(RGB(139, 0, 0));
@@ -1237,6 +1238,18 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine
     wc.hIconSm = (HICON)LoadImage(hInstance, MAKEINTRESOURCE(IDI_ICON1), IMAGE_ICON, 16, 16, LR_DEFAULTCOLOR);
 
     RegisterClassEx(&wc);
+
+    // Register Noto Sans KR from Resource
+    HRSRC hResFont = FindResource(hInstance, MAKEINTRESOURCE(IDR_FONT_NOTO), RT_RCDATA);
+    if (hResFont) {
+        HGLOBAL hGlobFont = LoadResource(hInstance, hResFont);
+        if (hGlobFont) {
+            void* pData = LockResource(hGlobFont);
+            DWORD size = SizeofResource(hInstance, hResFont);
+            DWORD numFonts = 0;
+            g_hFontRes = AddFontMemResourceEx(pData, size, NULL, &numFonts);
+        }
+    }
 
     HWND hwnd = CreateWindowEx(0, CLASS_NAME, L"AWS Cleaner", WS_OVERLAPPEDWINDOW, CW_USEDEFAULT, CW_USEDEFAULT, 610, 850, NULL, NULL, hInstance, NULL);
     if (hwnd == NULL) return 0;
