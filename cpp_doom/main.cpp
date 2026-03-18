@@ -708,7 +708,8 @@ LRESULT CALLBACK WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) 
         g_hChkShowSecret = CreateWindow(L"BUTTON", L"Show", WS_VISIBLE | WS_CHILD | BS_AUTOCHECKBOX, 510, startY + 58, 60, 22, hwnd, (HMENU)ID_CHK_SHOW_SECRET, NULL, NULL);
 
         CreateWindow(L"STATIC", L"Resource Filter :", WS_VISIBLE | WS_CHILD, 20, startY + 90, 120, 20, hwnd, NULL, NULL, NULL);
-        g_hResourceFilter = CreateWindow(L"COMBOBOX", L"", WS_VISIBLE | WS_CHILD | CBS_DROPDOWN | CBS_OWNERDRAWFIXED | WS_VSCROLL, 150, startY + 87, 250, 400, hwnd, (HMENU)ID_COMBO_RESOURCE, NULL, NULL);
+        g_hResourceFilter = CreateWindow(L"COMBOBOX", L"", WS_VISIBLE | WS_CHILD | CBS_DROPDOWN | CBS_OWNERDRAWFIXED | WS_VSCROLL | WS_HSCROLL, 150, startY + 87, 250, 400, hwnd, (HMENU)ID_COMBO_RESOURCE, NULL, NULL);
+        SendMessage(g_hResourceFilter, CB_SETHORIZONTALEXTENT, 600, 0); // Enable horizontal scroll
         
         // Sorting ComboBox
         g_hSortCombo = CreateWindow(L"COMBOBOX", L"", WS_VISIBLE | WS_CHILD | CBS_DROPDOWNLIST, 410, startY + 87, 120, 200, hwnd, (HMENU)ID_COMBO_SORT, NULL, NULL);
@@ -898,37 +899,32 @@ LRESULT CALLBACK WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) 
             COLORREF oldText = SetTextColor(hdc, (pdis->itemState & ODS_SELECTED) ? GetSysColor(COLOR_HIGHLIGHTTEXT) : GetSysColor(COLOR_WINDOWTEXT));
             int oldBkMode = SetBkMode(hdc, TRANSPARENT);
 
-            // Draw Korean (Large) and English (Small/Sub)
+            // Partition the drawing area (assuming 600 width horizontal extent)
+            // Korean: 5 to 180
+            // English: 190 to 380
+            // Tags: 390 to 590
+            
             RECT rcKor = rc;
             rcKor.left += 5;
-            rcKor.right = rcKor.left + 140;
+            rcKor.right = rcKor.left + 175;
             SelectObject(hdc, g_hFontBold);
             DrawText(hdc, kor, -1, &rcKor, DT_SINGLELINE | DT_VCENTER | DT_END_ELLIPSIS);
 
             RECT rcEng = rc;
-            rcEng.left = rcKor.right + 5;
-            SelectObject(hdc, g_hFontNorm); // Use global normal font for English sub-text
+            rcEng.left = rcKor.right + 10;
+            rcEng.right = rcEng.left + 190;
+            SelectObject(hdc, g_hFontNorm); 
             SetTextColor(hdc, (pdis->itemState & ODS_SELECTED) ? GetSysColor(COLOR_HIGHLIGHTTEXT) : RGB(100, 100, 100));
-            DrawText(hdc, eng, -1, &rcEng, DT_SINGLELINE | DT_VCENTER | DT_END_ELLIPSIS | DT_CALCRECT);
             DrawText(hdc, eng, -1, &rcEng, DT_SINGLELINE | DT_VCENTER | DT_END_ELLIPSIS);
 
-            // Draw Tags (Hashtags) at the far right
+            // Draw Tags (Hashtags)
             std::wstring infoTags = g_resourceInfos[realIdx].tags;
-            // Show only first 2-3 tags to keep it clean
-            size_t thirdSpace = 0;
-            int spaceCount = 0;
-            for (size_t i = 0; i < infoTags.length(); ++i) {
-                if (infoTags[i] == L' ') {
-                    if (++spaceCount == 4) { thirdSpace = i; break; }
-                }
-            }
-            if (thirdSpace > 0) infoTags = infoTags.substr(0, thirdSpace) + L"...";
-
             RECT rcTags = rc;
-            rcTags.right -= 10;
-            SelectObject(hdc, g_hFontIndicator); // Use smaller/bold font for tags
+            rcTags.left = rcEng.right + 10;
+            rcTags.right = rc.left + 590; // Extend to full horizontal width
+            SelectObject(hdc, g_hFontIndicator); 
             SetTextColor(hdc, (pdis->itemState & ODS_SELECTED) ? GetSysColor(COLOR_HIGHLIGHTTEXT) : RGB(0, 150, 200));
-            DrawText(hdc, infoTags.c_str(), -1, &rcTags, DT_SINGLELINE | DT_VCENTER | DT_RIGHT | DT_END_ELLIPSIS);
+            DrawText(hdc, infoTags.c_str(), -1, &rcTags, DT_SINGLELINE | DT_VCENTER | DT_LEFT | DT_END_ELLIPSIS);
 
             SetTextColor(hdc, oldText);
             SetBkMode(hdc, oldBkMode);
