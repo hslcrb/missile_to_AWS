@@ -2,5 +2,9 @@
   "account_id": "",
   "access_key": "",
   "secret_key": "",
-  "show_secret": false
+  "show_secret": false,
+  "history": [
+    "Active code page: 65001\r\r\n",
+    "\r\r\nF:\\aws-nuke\\cpp_doom>"
+  ]
 }
