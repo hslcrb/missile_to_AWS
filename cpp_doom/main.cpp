@@ -74,6 +74,10 @@ bool IsPriorityResource(const wchar_t* res) {
 }
 
 LRESULT CALLBACK ComboEditProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) {
+    if (uMsg == WM_SETCURSOR) {
+        SetCursor(LoadCursor(NULL, IDC_IBEAM));
+        return TRUE;
+    }
     if (uMsg == WM_IME_STARTCOMPOSITION) {
         g_isIMEComposing = true;
     } else if (uMsg == WM_IME_ENDCOMPOSITION) {
@@ -1016,11 +1020,6 @@ LRESULT CALLBACK WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) 
     case WM_SETCURSOR:
         if (g_isWorking && LOWORD(lParam) == HTCLIENT) {
             SetCursor(LoadCursor(NULL, IDC_APPSTARTING));
-            return TRUE;
-        }
-        // Ensure cursor is shown for default case if not handled by child
-        if (LOWORD(lParam) == HTCLIENT) {
-            SetCursor(LoadCursor(NULL, IDC_ARROW));
             return TRUE;
         }
         break;
