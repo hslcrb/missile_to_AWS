@@ -59,6 +59,8 @@ HWND g_hAccount, g_hAccessKey, g_hSecretKey, g_hLogs, g_hBtnSave, g_hBtnNuke, g_
 HWND g_hwndSelectAll = NULL;
 std::vector<int> g_filteredIndices; // Indices into g_resourceInfos for the current filter
 bool g_isFiltering = false;
+bool g_isIMEComposing = false;
+WNDPROC g_OldComboEditProc = NULL;
 bool g_selectAll = false;
 int g_nukeCountdown = 0;
 HBITMAP g_hNukeBmpFull = NULL, g_hNukeBmpDim = NULL;
@@ -81,6 +83,17 @@ bool IsPriorityResource(const wchar_t* res) {
         if (wcscmp(res, priorities[i]) == 0) return true;
     }
     return false;
+}
+
+LRESULT CALLBACK ComboEditProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) {
+    if (uMsg == WM_IME_STARTCOMPOSITION) {
+        g_isIMEComposing = true;
+    } else if (uMsg == WM_IME_ENDCOMPOSITION) {
+        g_isIMEComposing = false;
+        // Trigger filtering when composition ends
+        PostMessage(GetParent(GetParent(hwnd)), WM_COMMAND, MAKEWPARAM(ID_COMBO_RESOURCE, CBN_EDITCHANGE), (LPARAM)GetParent(hwnd));
+    }
+    return CallWindowProc(g_OldComboEditProc, hwnd, uMsg, wParam, lParam);
 }
 
 int GetFuzzyScore(const std::wstring& search, const std::wstring& target) {
@@ -658,6 +671,11 @@ LRESULT CALLBACK WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) 
         for (int idx : g_filteredIndices) SendMessage(g_hResourceFilter, CB_ADDSTRING, 0, (LPARAM)g_resourceInfos[idx].eng);
         SendMessage(g_hResourceFilter, CB_SETCURSEL, 0, 0);
 
+        COMBOBOXINFO cbi = { sizeof(COMBOBOXINFO) };
+        if (GetComboBoxInfo(g_hResourceFilter, &cbi)) {
+            g_OldComboEditProc = (WNDPROC)SetWindowLongPtr(cbi.hwndItem, GWLP_WNDPROC, (LONG_PTR)ComboEditProc);
+        }
+
         g_hFontBold = CreateFont(18, 0, 0, 0, FW_BOLD, FALSE, FALSE, FALSE, DEFAULT_CHARSET, OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS, DEFAULT_QUALITY, DEFAULT_PITCH | FF_DONTCARE, L"Segoe UI");
         g_hFontPrefix = CreateFont(22, 0, 0, 0, FW_BOLD, FALSE, FALSE, FALSE, DEFAULT_CHARSET, OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS, DEFAULT_QUALITY, DEFAULT_PITCH | FF_DONTCARE, L"Segoe UI");
         g_hFontIndicator = CreateFont(16, 0, 0, 0, FW_BOLD, FALSE, FALSE, FALSE, DEFAULT_CHARSET, OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS, DEFAULT_QUALITY, DEFAULT_PITCH | FF_DONTCARE, L"Segoe UI");
@@ -980,7 +998,7 @@ LRESULT CALLBACK WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) 
             InvalidateRect(g_hSecretKey, NULL, TRUE);
         }
         if (id == ID_COMBO_RESOURCE && code == CBN_EDITCHANGE) {
-            if (g_isFiltering) return 0;
+            if (g_isFiltering || g_isIMEComposing) return 0;
             g_isFiltering = true;
 
             wchar_t search[128];
@@ -993,10 +1011,10 @@ LRESULT CALLBACK WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) 
                 SendMessage(g_hResourceFilter, CB_ADDSTRING, 0, (LPARAM)g_resourceInfos[idx].eng);
             }
             
-            // Restore text and selection
+            // Restore text and selection (crucial for CBS_DROPDOWN)
             SetWindowText(g_hResourceFilter, search);
             SendMessage(g_hResourceFilter, CB_SETEDITSEL, 0, MAKELPARAM(wcslen(search), wcslen(search)));
-            SendMessage(g_hResourceFilter, CB_SHOWDROPDOWN, TRUE, 0);
+            if (!g_isIMEComposing) SendMessage(g_hResourceFilter, CB_SHOWDROPDOWN, TRUE, 0);
             
             g_isFiltering = false;
         }
