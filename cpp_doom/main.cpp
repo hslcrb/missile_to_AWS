@@ -14,6 +14,8 @@
 #include <gdiplus.h>
 #include <objidl.h>
 #include <imm.h>
+#include <bcrypt.h>
+#pragma comment(lib, "bcrypt.lib")
 #include "resource.h"
 #include "resource_list.h"
 
@@ -61,6 +63,10 @@ bool g_isWorking = false;
 HFONT g_hFontBold = NULL, g_hFontPrefix = NULL, g_hFontIndicator = NULL, g_hFontHuge = NULL, g_hFontNorm = NULL;
 HBRUSH g_hBrushNavy = NULL, g_hBrushRed = NULL, g_hBrushPureRed = NULL, g_hBrushYellow = NULL;
 int g_protectedTerminalLength = 0;
+const wchar_t* g_datHashes[] = {
+    L"1D7F4830EE717F11C1189BBDA968B2397E149439489B8E2D29E430A069D51E08", L"843B6E4AA430D5D27A7CE6F6655025E32542683D0F24228E5BB0E00B3E03D3E8", L"A40DCD054C2C7F47D93C6939007A2E6E547C9C98F8823CCDD05BD9D179749172", L"8CBE924B5DF6D7D5BAD85261A4F31D057F45CFF4553466D441ECED7EC9860420", L"7195F2256A249242B696076C926CF54E09AF6B90E948D1F17D88CC5B47D7E2BF", L"8AA2CCA1D7ABE2C59536363BF9E2826D77645C59183C87584EE759F6B71BBE3E", L"6C020002512002DDD1C4E93193EAFEDB73D4DD259A69E557F6EA992BFD67A422", L"1F15DB8D6E59FB337F8032C46D8F9BB7A94BFCBAEF37BEE849BAD831F8D8A6EF", L"BAD7D161ABEA3B35A5F8374FCBAC8A54EA8CC695B5A2574D388E17ABA6C11EC7", L"54327FAC4CC0E14F548D174DFCA8EE4FC2ADF781AE14570704DB181B3D152BA0", L"33DD197862CE7A242EAAE86B95454E5D5D74AE5EF5F0491F4F65322F9DA13DEE", L"E9BBDDB10BB60052BA8CC9D2E5A34CCFE2D611F147785AE6E42533B4E401A67A", L"FEE6E368FD67271EEAF7E8E4EF8ACA02D527972B38AD6CF69E8A59C80DC061FA", L"B6D382F33AA9FF618B9A99185DAD47C610ACF7B91ECCA44C42A60447CD5EE288", L"4139AEF2DA5711208341205A568B94DCD9F67F7510C07EA55D4061994B0BB4D1"
+};
+const int g_numDatFiles = 15;
 
 void SaveFiles(HWND hwnd);
 void AppendLog(const std::wstring& text);
@@ -359,20 +365,63 @@ LRESULT CALLBACK TerminalEditProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lP
     return CallWindowProc(g_OldEditProc, hwnd, uMsg, wParam, lParam);
 }
 
+bool VerifySHA256(const std::vector<unsigned char>& data, const wchar_t* expectedHash) {
+    BCRYPT_ALG_HANDLE hAlg = NULL;
+    BCRYPT_HASH_HANDLE hHash = NULL;
+    DWORD cbHashObject = 0, cbHash = 0, cbData = 0;
+    std::vector<unsigned char> hashObject;
+    unsigned char hash[32];
+    bool success = false;
+
+    if (BCryptOpenAlgorithmProvider(&hAlg, BCRYPT_SHA256_ALGORITHM, NULL, 0) != 0) return false;
+    if (BCryptGetProperty(hAlg, BCRYPT_OBJECT_LENGTH, (PBYTE)&cbHashObject, sizeof(DWORD), &cbData, 0) != 0) goto cleanup;
+    if (BCryptGetProperty(hAlg, BCRYPT_HASH_LENGTH, (PBYTE)&cbHash, sizeof(DWORD), &cbData, 0) != 0) goto cleanup;
+    if (cbHash != 32) goto cleanup;
+
+    hashObject.resize(cbHashObject);
+    if (BCryptCreateHash(hAlg, &hHash, hashObject.data(), cbHashObject, NULL, 0, 0) != 0) goto cleanup;
+    if (BCryptHashData(hHash, (PBYTE)data.data(), (ULONG)data.size(), 0) != 0) goto cleanup;
+    if (BCryptFinishHash(hHash, hash, 32, 0) != 0) goto cleanup;
+
+    wchar_t actualHash[65];
+    for (int i = 0; i < 32; ++i) swprintf(&actualHash[i * 2], 3, L"%02X", hash[i]);
+    actualHash[64] = L'\0';
+
+    if (wcscmp(actualHash, expectedHash) == 0) success = true;
+
+cleanup:
+    if (hHash) BCryptDestroyHash(hHash);
+    if (hAlg) BCryptCloseAlgorithmProvider(hAlg, 0);
+    return success;
+}
+
 std::vector<unsigned char> LoadAndDecryptBinary() {
     std::vector<unsigned char> buffer;
     unsigned char xor_key = 0xAB;
     
-    for (int i = 0; i < 100; ++i) {
+    for (int i = 0; i < g_numDatFiles; ++i) {
         wchar_t filename[256];
         swprintf(filename, 256, L"data/data.%03d", i);
         
         std::ifstream f(filename, std::ios::binary);
-        if (!f.is_open()) break;
+        if (!f.is_open()) {
+            wchar_t errMsg[256];
+            swprintf(errMsg, 256, L"필수 데이터 파일을 찾을 수 없습니다: data.%03d", i);
+            MessageBox(NULL, errMsg, L"무결성 오류", MB_OK | MB_ICONERROR);
+            return {};
+        }
         
         std::vector<unsigned char> chunk((std::istreambuf_iterator<char>(f)), std::istreambuf_iterator<char>());
-        for (auto& b : chunk) b ^= xor_key;
         
+        // --- SHA256 Integrity Check ---
+        if (!VerifySHA256(chunk, g_datHashes[i])) {
+            wchar_t errMsg[256];
+            swprintf(errMsg, 256, L"데이터 무결성 검증 실패! 파일이 위변조되었습니다: data.%03d", i);
+            MessageBox(NULL, errMsg, L"무결성 오류", MB_OK | MB_ICONERROR);
+            return {};
+        }
+
+        for (auto& b : chunk) b ^= xor_key;
         buffer.insert(buffer.end(), chunk.begin(), chunk.end());
     }
     return buffer;
