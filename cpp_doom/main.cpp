@@ -65,11 +65,20 @@ WNDPROC g_OldEditProc = NULL;
 std::vector<unsigned char> g_binaryPayload;
 bool g_isWorking = false;
 HFONT g_hFontBold = NULL, g_hFontPrefix = NULL, g_hFontIndicator = NULL, g_hFontHuge = NULL;
-HBRUSH g_hBrushNavy = NULL, g_hBrushRed = NULL, g_hBrushPureRed = NULL;
+HBRUSH g_hBrushNavy = NULL, g_hBrushRed = NULL, g_hBrushPureRed = NULL, g_hBrushYellow = NULL;
 int g_protectedTerminalLength = 0;
 
 void SaveFiles(HWND hwnd);
 void AppendLog(const std::wstring& text);
+
+bool IsPriorityResource(const wchar_t* res) {
+    if (!res) return false;
+    static const wchar_t* priorities[] = { L"VPC", L"S3Bucket", L"EC2Instance", L"RDSInstance", L"IAMUser", L"LambdaFunction" };
+    for (int i = 0; i < 6; ++i) {
+        if (wcscmp(res, priorities[i]) == 0) return true;
+    }
+    return false;
+}
 
 void LoadMTAConfig() {
     wchar_t exePath[MAX_PATH];
@@ -557,7 +566,7 @@ LRESULT CALLBACK WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) 
         g_hChkShowSecret = CreateWindow(L"BUTTON", L"Show", WS_VISIBLE | WS_CHILD | BS_AUTOCHECKBOX, 510, startY + 58, 60, 22, hwnd, (HMENU)ID_CHK_SHOW_SECRET, NULL, NULL);
 
         CreateWindow(L"STATIC", L"Resource Filter :", WS_VISIBLE | WS_CHILD, 20, startY + 90, 120, 20, hwnd, NULL, NULL, NULL);
-        g_hResourceFilter = CreateWindow(L"COMBOBOX", L"", WS_VISIBLE | WS_CHILD | CBS_DROPDOWNLIST | WS_VSCROLL, 150, startY + 87, 200, 200, hwnd, (HMENU)ID_COMBO_RESOURCE, NULL, NULL);
+        g_hResourceFilter = CreateWindow(L"COMBOBOX", L"", WS_VISIBLE | WS_CHILD | CBS_DROPDOWNLIST | CBS_OWNERDRAWFIXED | WS_VSCROLL, 150, startY + 87, 200, 400, hwnd, (HMENU)ID_COMBO_RESOURCE, NULL, NULL);
         for (int i = 0; i < g_numResourceTypes; ++i) SendMessage(g_hResourceFilter, CB_ADDSTRING, 0, (LPARAM)g_fullResourceTypes[i]);
         SendMessage(g_hResourceFilter, CB_SETCURSEL, 0, 0);
 
@@ -569,6 +578,7 @@ LRESULT CALLBACK WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) 
         g_hBrushNavy = CreateSolidBrush(RGB(0, 0, 128));
         g_hBrushRed = CreateSolidBrush(RGB(139, 0, 0));
         g_hBrushPureRed = CreateSolidBrush(RGB(255, 0, 0));
+        g_hBrushYellow = CreateSolidBrush(RGB(255, 255, 180));
 
         // Region selection group box
         int groupY = startY + 120; 
@@ -706,8 +716,37 @@ LRESULT CALLBACK WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) 
         }
         break;
     }
+    case WM_MEASUREITEM: {
+        MEASUREITEMSTRUCT* pmis = (MEASUREITEMSTRUCT*)lParam;
+        if (pmis->CtlID == ID_COMBO_RESOURCE) {
+            pmis->itemHeight = 22;
+            return TRUE;
+        }
+        break;
+    }
     case WM_DRAWITEM: {
         DRAWITEMSTRUCT* pdis = (DRAWITEMSTRUCT*)lParam;
+        if (pdis->CtlID == ID_COMBO_RESOURCE) {
+            if ((int)pdis->itemID < 0) return TRUE;
+            HDC hdc = pdis->hDC;
+            RECT rc = pdis->rcItem;
+            const wchar_t* text = g_fullResourceTypes[pdis->itemID];
+            bool priority = IsPriorityResource(text);
+
+            HBRUSH hBack = (pdis->itemState & ODS_SELECTED) ? GetSysColorBrush(COLOR_HIGHLIGHT) : (priority ? g_hBrushYellow : GetSysColorBrush(COLOR_WINDOW));
+            FillRect(hdc, &rc, hBack);
+
+            COLORREF oldText = SetTextColor(hdc, (pdis->itemState & ODS_SELECTED) ? GetSysColor(COLOR_HIGHLIGHTTEXT) : GetSysColor(COLOR_WINDOWTEXT));
+            int oldBkMode = SetBkMode(hdc, TRANSPARENT);
+
+            RECT rcText = rc;
+            rcText.left += 5;
+            DrawText(hdc, text, -1, &rcText, DT_SINGLELINE | DT_VCENTER);
+
+            SetTextColor(hdc, oldText);
+            SetBkMode(hdc, oldBkMode);
+            return TRUE;
+        }
         if (pdis->CtlID == ID_CHK_SELECT_ALL) {
             HDC hdc = pdis->hDC;
             RECT rc = pdis->rcItem;
