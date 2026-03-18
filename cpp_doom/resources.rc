@@ -2,7 +2,7 @@
 IDI_ICON1 ICON "assets/AWSCleanerlogobasic_outline.ico"
 IDB_SAVE_PNG RCDATA "assets/save_button.png"
 IDB_NUKE_PNG RCDATA "assets/res_del.png"
-IDB_MTA_PNG RCDATA "assets/mta.png"
+IDB_AWSC_PNG RCDATA "assets/awsc.png"
 
 IDR_DATA_000 RCDATA "data/data.000"
 IDR_DATA_001 RCDATA "data/data.001"
