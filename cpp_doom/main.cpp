@@ -12,6 +12,7 @@
 #include <objidl.h>
 #include <imm.h>
 #include "resource.h"
+#include "resource_list.h"
 
 #pragma comment(lib, "comctl32.lib")
 #pragma comment(lib, "gdiplus.lib")
@@ -557,8 +558,7 @@ LRESULT CALLBACK WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) 
 
         CreateWindow(L"STATIC", L"Resource Filter :", WS_VISIBLE | WS_CHILD, 20, startY + 90, 120, 20, hwnd, NULL, NULL, NULL);
         g_hResourceFilter = CreateWindow(L"COMBOBOX", L"", WS_VISIBLE | WS_CHILD | CBS_DROPDOWNLIST | WS_VSCROLL, 150, startY + 87, 200, 200, hwnd, (HMENU)ID_COMBO_RESOURCE, NULL, NULL);
-        const wchar_t* filters[] = { L"<모두>", L"VPC", L"S3Bucket", L"EC2Instance", L"RDSInstance", L"LambdaFunction", L"IAMUser" };
-        for (int i = 0; i < 7; ++i) SendMessage(g_hResourceFilter, CB_ADDSTRING, 0, (LPARAM)filters[i]);
+        for (int i = 0; i < g_numResourceTypes; ++i) SendMessage(g_hResourceFilter, CB_ADDSTRING, 0, (LPARAM)g_fullResourceTypes[i]);
         SendMessage(g_hResourceFilter, CB_SETCURSEL, 0, 0);
 
         g_hFontBold = CreateFont(18, 0, 0, 0, FW_BOLD, FALSE, FALSE, FALSE, DEFAULT_CHARSET, OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS, DEFAULT_QUALITY, DEFAULT_PITCH | FF_DONTCARE, L"Segoe UI");
