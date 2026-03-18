@@ -8,6 +8,7 @@
 #include <string>
 #include <fstream>
 #include <algorithm>
+#include <set>
 #include <sstream>
 #include <CommCtrl.h>
 #include <winternl.h>
@@ -65,6 +66,10 @@ HANDLE g_hFontRes = NULL;
 HBRUSH g_hBrushNavy = NULL, g_hBrushRed = NULL, g_hBrushPureRed = NULL, g_hBrushYellow = NULL;
 int g_protectedTerminalLength = 0;
 std::vector<std::wstring> g_logHistory;
+std::set<std::wstring> g_favorites;
+WNDPROC g_OldComboListProc = NULL;
+#define ID_MENU_FAV_ADD 3001
+#define ID_MENU_FAV_DEL 3002
 const wchar_t* g_datHashes[] = {
     L"1D7F4830EE717F11C1189BBDA968B2397E149439489B8E2D29E430A069D51E08", L"843B6E4AA430D5D27A7CE6F6655025E32542683D0F24228E5BB0E00B3E03D3E8", L"A40DCD054C2C7F47D93C6939007A2E6E547C9C98F8823CCDD05BD9D179749172", L"8CBE924B5DF6D7D5BAD85261A4F31D057F45CFF4553466D441ECED7EC9860420", L"7195F2256A249242B696076C926CF54E09AF6B90E948D1F17D88CC5B47D7E2BF", L"8AA2CCA1D7ABE2C59536363BF9E2826D77645C59183C87584EE759F6B71BBE3E", L"6C020002512002DDD1C4E93193EAFEDB73D4DD259A69E557F6EA992BFD67A422", L"1F15DB8D6E59FB337F8032C46D8F9BB7A94BFCBAEF37BEE849BAD831F8D8A6EF", L"BAD7D161ABEA3B35A5F8374FCBAC8A54EA8CC695B5A2574D388E17ABA6C11EC7", L"54327FAC4CC0E14F548D174DFCA8EE4FC2ADF781AE14570704DB181B3D152BA0", L"33DD197862CE7A242EAAE86B95454E5D5D74AE5EF5F0491F4F65322F9DA13DEE", L"E9BBDDB10BB60052BA8CC9D2E5A34CCFE2D611F147785AE6E42533B4E401A67A", L"FEE6E368FD67271EEAF7E8E4EF8ACA02D527972B38AD6CF69E8A59C80DC061FA", L"B6D382F33AA9FF618B9A99185DAD47C610ACF7B91ECCA44C42A60447CD5EE288", L"4139AEF2DA5711208341205A568B94DCD9F67F7510C07EA55D4061994B0BB4D1"
 };
@@ -76,11 +81,52 @@ void AppendLog(const std::wstring& text);
 
 bool IsPriorityResource(const wchar_t* res) {
     if (!res) return false;
+    if (g_favorites.count(res)) return true;
     static const wchar_t* priorities[] = { L"EC2Instance", L"EC2VPC", L"IAMUser", L"LambdaFunction", L"RDSInstance", L"S3Bucket", L"ESS" };
     for (int i = 0; i < 7; ++i) {
         if (wcscmp(res, priorities[i]) == 0) return true;
     }
     return false;
+}
+
+LRESULT CALLBACK ComboListProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) {
+    if (uMsg == WM_RBUTTONDOWN) {
+        POINT pt = { LOWORD(lParam), HIWORD(lParam) };
+        int idx = (int)SendMessage(hwnd, LB_ITEMFROMPOINT, 0, lParam);
+        if (HIWORD(idx) == 0) {
+            int itemIdx = LOWORD(idx);
+            if (itemIdx >= 0 && itemIdx < (int)g_filteredIndices.size()) {
+                int realIdx = g_filteredIndices[itemIdx];
+                std::wstring name = g_resourceInfos[realIdx].eng;
+                bool isFav = g_favorites.count(name) > 0;
+
+                HMENU hMenu = CreatePopupMenu();
+                if (isFav) {
+                    AppendMenu(hMenu, MF_STRING, ID_MENU_FAV_DEL, L"즐겨찾기에서 제거");
+                } else {
+                    AppendMenu(hMenu, MF_STRING, ID_MENU_FAV_ADD, L"즐겨찾기에 추가");
+                }
+
+                ClientToScreen(hwnd, &pt);
+                int sel = TrackPopupMenu(hMenu, TPM_RETURNCMD | TPM_LEFTALIGN | TPM_RIGHTBUTTON, pt.x, pt.y, 0, hwnd, NULL);
+                DestroyMenu(hMenu);
+
+                if (sel == ID_MENU_FAV_ADD) {
+                    g_favorites.insert(name);
+                    SaveFiles(GetParent(GetParent(hwnd))); 
+                    InvalidateRect(GetParent(GetParent(hwnd)), NULL, TRUE);
+                    AppendLog(L"[INFO] 즐겨찾기에 추가되었습니다: " + name + L"\r\n");
+                } else if (sel == ID_MENU_FAV_DEL) {
+                    g_favorites.erase(name);
+                    SaveFiles(GetParent(GetParent(hwnd)));
+                    InvalidateRect(GetParent(GetParent(hwnd)), NULL, TRUE);
+                    AppendLog(L"[INFO] 즐겨찾기에서 제거되었습니다: " + name + L"\r\n");
+                }
+            }
+        }
+        return 0;
+    }
+    return CallWindowProc(g_OldComboListProc, hwnd, uMsg, wParam, lParam);
 }
 
 LRESULT CALLBACK ComboEditProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) {
@@ -291,6 +337,16 @@ void LoadMTAConfig() {
                 PostMessage(g_hSecretKey, EM_SETPASSWORDCHAR, (WPARAM)L'*', 0);
             }
             InvalidateRect(g_hSecretKey, NULL, TRUE);
+        }
+        size_t favPos = line.find(L"\"favorites\": [");
+        if (favPos != std::wstring::npos) {
+            while (std::getline(f, line) && line.find(L"]") == std::wstring::npos) {
+                size_t q1 = line.find(L"\"");
+                size_t q2 = line.find(L"\"", q1 + 1);
+                if (q1 != std::wstring::npos && q2 != std::wstring::npos) {
+                    g_favorites.insert(line.substr(q1 + 1, q2 - q1 - 1));
+                }
+            }
         }
     }
 }
@@ -713,6 +769,12 @@ void SaveFiles(HWND hwnd) {
     mta_file << L"  \"access_key\": \"" << access << L"\",\n";
     mta_file << L"  \"secret_key\": \"" << secret << L"\",\n";
     mta_file << L"  \"show_secret\": " << (SendMessage(g_hChkShowSecret, BM_GETCHECK, 0, 0) == BST_CHECKED ? L"true" : L"false") << L",\n";
+    mta_file << L"  \"favorites\": [\n";
+    std::vector<std::wstring> favList(g_favorites.begin(), g_favorites.end());
+    for (size_t i = 0; i < favList.size(); ++i) {
+        mta_file << L"    \"" << favList[i] << L"\"" << (i == favList.size() - 1 ? L"" : L",") << L"\n";
+    }
+    mta_file << L"  ],\n";
     mta_file << L"  \"history\": [\n";
     for (size_t i = 0; i < g_logHistory.size(); ++i) {
         std::wstring line = g_logHistory[i];
@@ -844,6 +906,7 @@ LRESULT CALLBACK WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) 
         COMBOBOXINFO cbi = { sizeof(COMBOBOXINFO) };
         if (GetComboBoxInfo(g_hResourceFilter, &cbi)) {
             g_OldComboEditProc = (WNDPROC)SetWindowLongPtr(cbi.hwndItem, GWLP_WNDPROC, (LONG_PTR)ComboEditProc);
+            g_OldComboListProc = (WNDPROC)SetWindowLongPtr(cbi.hwndList, GWLP_WNDPROC, (LONG_PTR)ComboListProc);
         }
 
         g_hFontBold = CreateFont(18, 0, 0, 0, FW_BOLD, FALSE, FALSE, FALSE, DEFAULT_CHARSET, OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS, DEFAULT_QUALITY, DEFAULT_PITCH | FF_DONTCARE, L"Noto Sans KR");
