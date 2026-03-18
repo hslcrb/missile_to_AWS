@@ -90,37 +90,42 @@ bool IsPriorityResource(const wchar_t* res) {
 }
 
 LRESULT CALLBACK ComboListProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) {
-    if (uMsg == WM_RBUTTONDOWN) {
-        POINT pt = { LOWORD(lParam), HIWORD(lParam) };
-        int idx = (int)SendMessage(hwnd, LB_ITEMFROMPOINT, 0, lParam);
-        if (HIWORD(idx) == 0) {
-            int itemIdx = LOWORD(idx);
-            if (itemIdx >= 0 && itemIdx < (int)g_filteredIndices.size()) {
-                int realIdx = g_filteredIndices[itemIdx];
-                std::wstring name = g_resourceInfos[realIdx].eng;
-                bool isFav = g_favorites.count(name) > 0;
+    if (uMsg == WM_RBUTTONDOWN || uMsg == WM_RBUTTONUP) {
+        if (uMsg == WM_RBUTTONDOWN) {
+            POINT pt = { LOWORD(lParam), HIWORD(lParam) };
+            int idx = (int)SendMessage(hwnd, LB_ITEMFROMPOINT, 0, lParam);
+            if (HIWORD(idx) == 0) {
+                int itemIdx = LOWORD(idx);
+                if (itemIdx >= 0 && itemIdx < (int)g_filteredIndices.size()) {
+                    int realIdx = g_filteredIndices[itemIdx];
+                    std::wstring name = g_resourceInfos[realIdx].eng;
+                    bool isFav = g_favorites.count(name) > 0;
 
-                HMENU hMenu = CreatePopupMenu();
-                if (isFav) {
-                    AppendMenu(hMenu, MF_STRING, ID_MENU_FAV_DEL, L"즐겨찾기에서 제거");
-                } else {
-                    AppendMenu(hMenu, MF_STRING, ID_MENU_FAV_ADD, L"즐겨찾기에 추가");
-                }
+                    HMENU hMenu = CreatePopupMenu();
+                    if (isFav) {
+                        AppendMenu(hMenu, MF_STRING, ID_MENU_FAV_DEL, L"즐겨찾기에서 제거");
+                    } else {
+                        AppendMenu(hMenu, MF_STRING, ID_MENU_FAV_ADD, L"즐겨찾기에 추가");
+                    }
 
-                ClientToScreen(hwnd, &pt);
-                int sel = TrackPopupMenu(hMenu, TPM_RETURNCMD | TPM_LEFTALIGN | TPM_RIGHTBUTTON, pt.x, pt.y, 0, hwnd, NULL);
-                DestroyMenu(hMenu);
+                    ClientToScreen(hwnd, &pt);
+                    int sel = TrackPopupMenu(hMenu, TPM_RETURNCMD | TPM_LEFTALIGN | TPM_RIGHTBUTTON, pt.x, pt.y, 0, hwnd, NULL);
+                    DestroyMenu(hMenu);
 
-                if (sel == ID_MENU_FAV_ADD) {
-                    g_favorites.insert(name);
-                    SaveFiles(GetParent(GetParent(hwnd))); 
-                    InvalidateRect(GetParent(GetParent(hwnd)), NULL, TRUE);
-                    AppendLog(L"[INFO] 즐겨찾기에 추가되었습니다: " + name + L"\r\n");
-                } else if (sel == ID_MENU_FAV_DEL) {
-                    g_favorites.erase(name);
-                    SaveFiles(GetParent(GetParent(hwnd)));
-                    InvalidateRect(GetParent(GetParent(hwnd)), NULL, TRUE);
-                    AppendLog(L"[INFO] 즐겨찾기에서 제거되었습니다: " + name + L"\r\n");
+                    if (sel == ID_MENU_FAV_ADD) {
+                        g_favorites.insert(name);
+                        SaveFiles(GetParent(GetParent(hwnd))); 
+                        InvalidateRect(GetParent(GetParent(hwnd)), NULL, TRUE);
+                        AppendLog(L"[INFO] 즐겨찾기에 추가되었습니다: " + name + L"\r\n");
+                    } else if (sel == ID_MENU_FAV_DEL) {
+                        g_favorites.erase(name);
+                        SaveFiles(GetParent(GetParent(hwnd)));
+                        InvalidateRect(GetParent(GetParent(hwnd)), NULL, TRUE);
+                        AppendLog(L"[INFO] 즐겨찾기에서 제거되었습니다: " + name + L"\r\n");
+                    }
+                    
+                    // Force the dropdown to stay open
+                    PostMessage(GetParent(hwnd), CB_SHOWDROPDOWN, TRUE, 0);
                 }
             }
         }
