@@ -1018,6 +1018,11 @@ LRESULT CALLBACK WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) 
             SetCursor(LoadCursor(NULL, IDC_APPSTARTING));
             return TRUE;
         }
+        // Ensure cursor is shown for default case if not handled by child
+        if (LOWORD(lParam) == HTCLIENT) {
+            SetCursor(LoadCursor(NULL, IDC_ARROW));
+            return TRUE;
+        }
         break;
     case WM_COMMAND: {
         int id = LOWORD(wParam);
@@ -1110,6 +1115,7 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine
     wc.lpszClassName = CLASS_NAME;
     wc.hbrBackground = (HBRUSH)(COLOR_WINDOW + 1);
     wc.hIcon = LoadIcon(hInstance, MAKEINTRESOURCE(IDI_ICON1));
+    wc.hCursor = LoadCursor(NULL, IDC_ARROW);
     wc.hIconSm = (HICON)LoadImage(hInstance, MAKEINTRESOURCE(IDI_ICON1), IMAGE_ICON, 16, 16, LR_DEFAULTCOLOR);
 
     RegisterClassEx(&wc);
