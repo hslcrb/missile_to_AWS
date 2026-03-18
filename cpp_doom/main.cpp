@@ -63,7 +63,7 @@ std::vector<unsigned char> g_binaryPayload;
 bool g_isWorking = false;
 HFONT g_hFontBold = NULL, g_hFontPrefix = NULL, g_hFontIndicator = NULL, g_hFontHuge = NULL, g_hFontNorm = NULL;
 HANDLE g_hFontRes = NULL;
-HBRUSH g_hBrushNavy = NULL, g_hBrushRed = NULL, g_hBrushPureRed = NULL, g_hBrushYellow = NULL;
+HBRUSH g_hBrushNavy = NULL, g_hBrushRed = NULL, g_hBrushPureRed = NULL, g_hBrushYellow = NULL, g_hBrushPastelBlue = NULL;
 int g_protectedTerminalLength = 0;
 std::vector<std::wstring> g_logHistory;
 std::set<std::wstring> g_favorites;
@@ -877,6 +877,18 @@ void RunNuke(HWND hwnd) {
 
 LRESULT CALLBACK WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) {
     switch (uMsg) {
+    case WM_ERASEBKGND: {
+        HDC hdc = (HDC)wParam;
+        RECT rc;
+        GetClientRect(hwnd, &rc);
+        FillRect(hdc, &rc, (HBRUSH)(COLOR_WINDOW + 1));
+        
+        // Paint Pastel Blue background for the Region Grid area
+        // groupY (195) to groupY + groupH (415)
+        RECT gridRc = { 15, 195, 575, 415 };
+        if (g_hBrushPastelBlue) FillRect(hdc, &gridRc, g_hBrushPastelBlue);
+        return 1;
+    }
     case WM_CREATE: {
         g_hFontNorm = CreateFont(18, 0, 0, 0, FW_NORMAL, FALSE, FALSE, FALSE, DEFAULT_CHARSET, OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS, DEFAULT_QUALITY, DEFAULT_PITCH | FF_DONTCARE, L"Noto Sans KR");
 
@@ -929,6 +941,7 @@ LRESULT CALLBACK WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) 
         g_hBrushRed = CreateSolidBrush(RGB(139, 0, 0));
         g_hBrushPureRed = CreateSolidBrush(RGB(255, 0, 0));
         g_hBrushYellow = CreateSolidBrush(RGB(255, 255, 180));
+        g_hBrushPastelBlue = CreateSolidBrush(RGB(235, 245, 255));
 
         // Region selection group box
         int groupY = startY + 120; 
@@ -1134,7 +1147,7 @@ LRESULT CALLBACK WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) 
             RECT rc = pdis->rcItem;
             int bw = rc.right - rc.left;
 
-            FillRect(hdc, &rc, (HBRUSH)(COLOR_WINDOW + 1));
+            FillRect(hdc, &rc, g_hBrushPastelBlue);
 
             HBRUSH hRedBrush = CreateSolidBrush(RGB(255, 0, 0));
             HPEN hRedPenBg = CreatePen(PS_SOLID, 1, RGB(255, 0, 0));
@@ -1185,7 +1198,7 @@ LRESULT CALLBACK WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) 
             HDC hdc = pdis->hDC;
             RECT rc = pdis->rcItem;
 
-            FillRect(hdc, &rc, (HBRUSH)(COLOR_WINDOW + 1));
+            FillRect(hdc, &rc, g_hBrushPastelBlue);
 
             // Draw Checkbox box
             RECT box = { rc.left, rc.top + 4, rc.left + 16, rc.top + 20 };
