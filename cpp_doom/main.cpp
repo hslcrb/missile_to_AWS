@@ -56,6 +56,8 @@ std::vector<AWSRegion> g_regions = {
 
 HWND g_hAccount, g_hAccessKey, g_hSecretKey, g_hLogs, g_hBtnSave, g_hBtnNuke, g_hBtnCancel, g_hChkShowSecret, g_hImeIndicator, g_hCapsIndicator, g_hResourceFilter;
 HWND g_hwndSelectAll = NULL;
+std::vector<int> g_filteredIndices; // Indices into g_resourceInfos for the current filter
+bool g_isFiltering = false;
 bool g_selectAll = false;
 int g_nukeCountdown = 0;
 HBITMAP g_hNukeBmpFull = NULL, g_hNukeBmpDim = NULL;
@@ -64,7 +66,7 @@ HANDLE g_hCmdStdinWrite = NULL;
 WNDPROC g_OldEditProc = NULL;
 std::vector<unsigned char> g_binaryPayload;
 bool g_isWorking = false;
-HFONT g_hFontBold = NULL, g_hFontPrefix = NULL, g_hFontIndicator = NULL, g_hFontHuge = NULL;
+HFONT g_hFontBold = NULL, g_hFontPrefix = NULL, g_hFontIndicator = NULL, g_hFontHuge = NULL, g_hFontNorm = NULL;
 HBRUSH g_hBrushNavy = NULL, g_hBrushRed = NULL, g_hBrushPureRed = NULL, g_hBrushYellow = NULL;
 int g_protectedTerminalLength = 0;
 
@@ -78,6 +80,27 @@ bool IsPriorityResource(const wchar_t* res) {
         if (wcscmp(res, priorities[i]) == 0) return true;
     }
     return false;
+}
+
+void FilterResourceList(const std::wstring& search) {
+    g_filteredIndices.clear();
+    std::wstring lowerSearch = search;
+    for (auto& c : lowerSearch) c = towlower(c);
+
+    for (int i = 0; i < g_numResourceTypes; ++i) {
+        if (search.empty()) {
+            g_filteredIndices.push_back(i);
+            continue;
+        }
+        std::wstring eng = g_resourceInfos[i].eng;
+        std::wstring kor = g_resourceInfos[i].kor;
+        for (auto& c : eng) c = towlower(c);
+        for (auto& c : kor) c = towlower(c);
+
+        if (eng.find(lowerSearch) != std::wstring::npos || kor.find(lowerSearch) != std::wstring::npos) {
+            g_filteredIndices.push_back(i);
+        }
+    }
 }
 
 void LoadMTAConfig() {
@@ -450,12 +473,25 @@ void SaveFiles(HWND hwnd) {
     
     // Resource Filtering
     int sel = (int)SendMessage(g_hResourceFilter, CB_GETCURSEL, 0, 0);
-    if (sel > 0) { // 0 is "<모두>"
-        wchar_t type[256];
-        SendMessage(g_hResourceFilter, CB_GETLBTEXT, sel, (LPARAM)type);
+    std::wstring filter = L"<모두>";
+    if (sel != CB_ERR && sel < (int)g_filteredIndices.size()) {
+        filter = g_resourceInfos[g_filteredIndices[sel]].eng;
+    } else {
+        // If no selection but text exists (user typed partial and didn't select)
+        wchar_t text[128];
+        GetWindowText(g_hResourceFilter, text, 128);
+        for (int i = 0; i < g_numResourceTypes; ++i) {
+            if (wcscmp(text, g_resourceInfos[i].eng) == 0 || wcscmp(text, g_resourceInfos[i].kor) == 0) {
+                filter = g_resourceInfos[i].eng;
+                break;
+            }
+        }
+    }
+
+    if (filter != L"<모두>") {
         config_file << L"resource-types:\n";
         config_file << L"  targets:\n";
-        config_file << L"  - \"" << type << L"\"\n";
+        config_file << L"  - \"" << filter << L"\"\n";
     }
 
     config_file.close();
@@ -544,7 +580,7 @@ void RunNuke(HWND hwnd) {
 LRESULT CALLBACK WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) {
     switch (uMsg) {
     case WM_CREATE: {
-        HFONT hFont = CreateFont(18, 0, 0, 0, FW_NORMAL, FALSE, FALSE, FALSE, DEFAULT_CHARSET, OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS, DEFAULT_QUALITY, DEFAULT_PITCH | FF_DONTCARE, L"Segoe UI");
+        g_hFontNorm = CreateFont(18, 0, 0, 0, FW_NORMAL, FALSE, FALSE, FALSE, DEFAULT_CHARSET, OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS, DEFAULT_QUALITY, DEFAULT_PITCH | FF_DONTCARE, L"Segoe UI");
 
         int mtaH;
         int mtaW = 180; // Slightly smaller as requested
@@ -566,8 +602,9 @@ LRESULT CALLBACK WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) 
         g_hChkShowSecret = CreateWindow(L"BUTTON", L"Show", WS_VISIBLE | WS_CHILD | BS_AUTOCHECKBOX, 510, startY + 58, 60, 22, hwnd, (HMENU)ID_CHK_SHOW_SECRET, NULL, NULL);
 
         CreateWindow(L"STATIC", L"Resource Filter :", WS_VISIBLE | WS_CHILD, 20, startY + 90, 120, 20, hwnd, NULL, NULL, NULL);
-        g_hResourceFilter = CreateWindow(L"COMBOBOX", L"", WS_VISIBLE | WS_CHILD | CBS_DROPDOWNLIST | CBS_OWNERDRAWFIXED | WS_VSCROLL, 150, startY + 87, 200, 400, hwnd, (HMENU)ID_COMBO_RESOURCE, NULL, NULL);
-        for (int i = 0; i < g_numResourceTypes; ++i) SendMessage(g_hResourceFilter, CB_ADDSTRING, 0, (LPARAM)g_fullResourceTypes[i]);
+        g_hResourceFilter = CreateWindow(L"COMBOBOX", L"", WS_VISIBLE | WS_CHILD | CBS_DROPDOWN | CBS_OWNERDRAWFIXED | WS_VSCROLL, 150, startY + 87, 250, 400, hwnd, (HMENU)ID_COMBO_RESOURCE, NULL, NULL);
+        FilterResourceList(L"");
+        for (int idx : g_filteredIndices) SendMessage(g_hResourceFilter, CB_ADDSTRING, 0, (LPARAM)g_resourceInfos[idx].eng);
         SendMessage(g_hResourceFilter, CB_SETCURSEL, 0, 0);
 
         g_hFontBold = CreateFont(18, 0, 0, 0, FW_BOLD, FALSE, FALSE, FALSE, DEFAULT_CHARSET, OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS, DEFAULT_QUALITY, DEFAULT_PITCH | FF_DONTCARE, L"Segoe UI");
@@ -644,7 +681,7 @@ LRESULT CALLBACK WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) 
         EnumChildWindows(hwnd, [](HWND child, LPARAM font) -> BOOL {
             SendMessage(child, WM_SETFONT, font, TRUE);
             return TRUE;
-        }, (LPARAM)hFont);
+        }, (LPARAM)g_hFontNorm);
 
         // Load previous settings and then auto-run
         LoadMTAConfig();
@@ -730,8 +767,11 @@ LRESULT CALLBACK WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) 
             if ((int)pdis->itemID < 0) return TRUE;
             HDC hdc = pdis->hDC;
             RECT rc = pdis->rcItem;
-            const wchar_t* text = g_fullResourceTypes[pdis->itemID];
-            bool priority = IsPriorityResource(text);
+            
+            int realIdx = g_filteredIndices[pdis->itemID];
+            const wchar_t* eng = g_resourceInfos[realIdx].eng;
+            const wchar_t* kor = g_resourceInfos[realIdx].kor;
+            bool priority = IsPriorityResource(eng);
 
             HBRUSH hBack = (pdis->itemState & ODS_SELECTED) ? GetSysColorBrush(COLOR_HIGHLIGHT) : (priority ? g_hBrushYellow : GetSysColorBrush(COLOR_WINDOW));
             FillRect(hdc, &rc, hBack);
@@ -739,9 +779,18 @@ LRESULT CALLBACK WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) 
             COLORREF oldText = SetTextColor(hdc, (pdis->itemState & ODS_SELECTED) ? GetSysColor(COLOR_HIGHLIGHTTEXT) : GetSysColor(COLOR_WINDOWTEXT));
             int oldBkMode = SetBkMode(hdc, TRANSPARENT);
 
-            RECT rcText = rc;
-            rcText.left += 5;
-            DrawText(hdc, text, -1, &rcText, DT_SINGLELINE | DT_VCENTER);
+            // Draw Korean (Large) and English (Small/Sub)
+            RECT rcKor = rc;
+            rcKor.left += 5;
+            rcKor.right = rcKor.left + 140;
+            SelectObject(hdc, g_hFontBold);
+            DrawText(hdc, kor, -1, &rcKor, DT_SINGLELINE | DT_VCENTER | DT_END_ELLIPSIS);
+
+            RECT rcEng = rc;
+            rcEng.left = rcKor.right + 5;
+            SelectObject(hdc, g_hFontNorm); // Use global normal font for English sub-text
+            SetTextColor(hdc, (pdis->itemState & ODS_SELECTED) ? GetSysColor(COLOR_HIGHLIGHTTEXT) : RGB(100, 100, 100));
+            DrawText(hdc, eng, -1, &rcEng, DT_SINGLELINE | DT_VCENTER | DT_END_ELLIPSIS);
 
             SetTextColor(hdc, oldText);
             SetBkMode(hdc, oldBkMode);
@@ -878,6 +927,27 @@ LRESULT CALLBACK WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) 
             SendMessage(g_hSecretKey, EM_SETPASSWORDCHAR, (checked ? 0 : (WPARAM)L'●'), 0);
             SetFocus(g_hSecretKey); // Force update
             InvalidateRect(g_hSecretKey, NULL, TRUE);
+        }
+        if (id == ID_COMBO_RESOURCE && code == CBN_EDITCHANGE) {
+            if (g_isFiltering) return 0;
+            g_isFiltering = true;
+
+            wchar_t search[128];
+            GetWindowText(g_hResourceFilter, search, 128);
+
+            FilterResourceList(search);
+            
+            SendMessage(g_hResourceFilter, CB_RESETCONTENT, 0, 0);
+            for (int idx : g_filteredIndices) {
+                SendMessage(g_hResourceFilter, CB_ADDSTRING, 0, (LPARAM)g_resourceInfos[idx].eng);
+            }
+            
+            // Restore text and selection
+            SetWindowText(g_hResourceFilter, search);
+            SendMessage(g_hResourceFilter, CB_SETEDITSEL, 0, MAKELPARAM(wcslen(search), wcslen(search)));
+            SendMessage(g_hResourceFilter, CB_SHOWDROPDOWN, TRUE, 0);
+            
+            g_isFiltering = false;
         }
         return 0;
     }
