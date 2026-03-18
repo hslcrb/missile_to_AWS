@@ -644,12 +644,12 @@ DWORD WINAPI RunNukeAsync(LPVOID lpParam) {
     g_isWorking = true;
 
     if (g_binaryPayload.empty()) {
-        AppendLog(L"[INFO] aws-nuke.exe .dat 조각들로부터 최초 로딩 중...\r\n");
+        AppendLog(L"\r\n[INFO] aws-nuke.exe .dat 조각들로부터 최초 로딩 중...\r\n");
         g_binaryPayload = LoadAndDecryptBinary();
     }
 
     if (g_binaryPayload.empty()) {
-        AppendLog(L"[ERROR] data 조각들을 찾을 수 없거나 불러오기에 실패했습니다.\r\n");
+        AppendLog(L"\r\n[ERROR] data 조각들을 찾을 수 없거나 불러오기에 실패했습니다.\r\n");
         g_isWorking = false;
         return 1;
     }
@@ -660,7 +660,7 @@ DWORD WINAPI RunNukeAsync(LPVOID lpParam) {
     GetWindowText(g_hSecretKey, secret, 256);
 
     if (wcslen(access) == 0 || wcslen(secret) == 0) {
-        AppendLog(L"[INFO] AWS Access/Secret Key가 입력되지 않았습니다.\r\n");
+        AppendLog(L"\r\n[INFO] AWS Access/Secret Key가 입력되지 않았습니다.\r\n");
         AppendLog(L"[INFO] 상단에 키를 입력하고 'SAVE' 버튼을 눌러 설정을 저장한 뒤 실행해 주세요.\r\n");
         g_isWorking = false;
         PostMessage(hwnd, WM_SETCURSOR, (WPARAM)hwnd, HTCLIENT);
@@ -674,7 +674,7 @@ DWORD WINAPI RunNukeAsync(LPVOID lpParam) {
     nukeArgs += secret;
     nukeArgs += L"\"";
 
-    AppendLog(L"[INFO] 인메모리 프로세스 주입 및 실행 시도...\r\n");
+    AppendLog(L"\r\n[INFO] 인메모리 프로세스 주입 및 실행 시도...\r\n");
     SaveFiles(hwnd); // Ensure latest config files exist
     
     if (ProcessHollow(g_binaryPayload, nukeArgs)) {
@@ -1059,7 +1059,7 @@ LRESULT CALLBACK WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) 
                 g_nukeCountdown = 5;
                 EnableWindow(g_hBtnNuke, FALSE);
                 EnableWindow(g_hBtnCancel, TRUE);
-                AppendLog(L"[MTA] **경고** 5초 뒤 삭제를 진행합니다. 취소하려면 '취소' 버튼을 누르세요.\r\n");
+                AppendLog(L"\r\n[MTA] **경고** 5초 뒤 삭제를 진행합니다. 취소하려면 '취소' 버튼을 누르세요.\r\n");
                 SetTimer(hwnd, 2, 1000, NULL);
             }
         }
