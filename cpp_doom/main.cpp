@@ -39,6 +39,7 @@ typedef NTSTATUS(NTAPI* pNtUnmapViewOfSection)(HANDLE, PVOID);
 
 // Region Checkbox IDs
 #define ID_CHK_REGION_START 3000
+#define ID_CHK_SELECT_ALL 3999
 
 typedef struct {
     std::wstring name;
@@ -56,6 +57,8 @@ std::vector<AWSRegion> g_regions = {
 
 HWND g_hAccount, g_hAccessKey, g_hSecretKey, g_hLogs, g_hBtnSave, g_hBtnNuke, g_hChkShowSecret, g_hImeIndicator, g_hCapsIndicator;
 HWND g_hChkSafe[3];
+HWND g_hwndSelectAll = NULL;
+bool g_selectAll = false;
 HBITMAP g_hNukeBmpFull = NULL, g_hNukeBmpDim = NULL;
 HANDLE g_hNukeStdinWrite = NULL;
 WNDPROC g_OldEditProc = NULL;
@@ -558,6 +561,8 @@ LRESULT CALLBACK WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) 
         int groupH = 200; // Increased to prevent overlapping
         CreateWindow(L"BUTTON", L"리소스를 삭제할 리전을 선택해주세요", WS_VISIBLE | WS_CHILD | BS_GROUPBOX, 15, groupY, 560, groupH, hwnd, NULL, NULL, NULL);
 
+        g_hwndSelectAll = CreateWindow(L"BUTTON", L"전체선택", WS_VISIBLE | WS_CHILD | BS_OWNERDRAW, 450, groupY + 12, 100, 24, hwnd, (HMENU)ID_CHK_SELECT_ALL, NULL, NULL);
+
         int columns = 3;
         int itemsPerColumn = (int)((g_regions.size() + columns - 1) / columns);
         for (int i = 0; i < (int)g_regions.size(); ++i) {
@@ -670,6 +675,44 @@ LRESULT CALLBACK WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) 
     }
     case WM_DRAWITEM: {
         DRAWITEMSTRUCT* pdis = (DRAWITEMSTRUCT*)lParam;
+        if (pdis->CtlID == ID_CHK_SELECT_ALL) {
+            HDC hdc = pdis->hDC;
+            RECT rc = pdis->rcItem;
+
+            FillRect(hdc, &rc, g_hBrushPureRed);
+
+            RECT box = { rc.left + 2, rc.top + 4, rc.left + 16, rc.top + 18 };
+            HBRUSH hWhiteBrush = (HBRUSH)GetStockObject(WHITE_BRUSH);
+            FillRect(hdc, &box, hWhiteBrush);
+
+            HPEN hRedPen = CreatePen(PS_SOLID, 1, RGB(255, 0, 0));
+            HGDIOBJ oldPen = SelectObject(hdc, hRedPen);
+            HBRUSH hNullBrush = (HBRUSH)GetStockObject(NULL_BRUSH);
+            HGDIOBJ oldBrush = SelectObject(hdc, hNullBrush);
+            Rectangle(hdc, box.left, box.top, box.right, box.bottom);
+
+            if (g_selectAll) {
+                HPEN hThickRedPen = CreatePen(PS_SOLID, 2, RGB(255, 0, 0));
+                SelectObject(hdc, hThickRedPen);
+                MoveToEx(hdc, box.left + 3, box.top + 6, NULL);
+                LineTo(hdc, box.left + 6, box.bottom - 3);
+                LineTo(hdc, box.right - 2, box.top + 2);
+                SelectObject(hdc, hRedPen);
+                DeleteObject(hThickRedPen);
+            }
+
+            SelectObject(hdc, oldPen);
+            SelectObject(hdc, oldBrush);
+            DeleteObject(hRedPen);
+
+            SetTextColor(hdc, RGB(255, 255, 255));
+            SetBkColor(hdc, RGB(255, 0, 0));
+            SelectObject(hdc, g_hFontBold);
+            RECT tr = { box.right + 6, rc.top, rc.right, rc.bottom };
+            DrawText(hdc, L"전체선택", -1, &tr, DT_LEFT | DT_VCENTER | DT_SINGLELINE);
+
+            return TRUE;
+        }
         if (pdis->CtlID >= ID_CHK_REGION_START && pdis->CtlID < ID_CHK_REGION_START + (int)g_regions.size()) {
             int idx = pdis->CtlID - ID_CHK_REGION_START;
             HDC hdc = pdis->hDC;
@@ -716,6 +759,14 @@ LRESULT CALLBACK WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) 
         }
         if (id == ID_BTN_NUKE && (code == BN_CLICKED || code == STN_CLICKED)) {
             RunNuke(hwnd);
+        }
+        if (id == ID_CHK_SELECT_ALL) {
+            g_selectAll = !g_selectAll;
+            for (int i = 0; i < (int)g_regions.size(); ++i) {
+                g_regions[i].selected = g_selectAll;
+                InvalidateRect(g_regions[i].hwnd, NULL, TRUE);
+            }
+            InvalidateRect(g_hwndSelectAll, NULL, TRUE);
         }
         if (id >= ID_CHK_REGION_START && id < ID_CHK_REGION_START + (int)g_regions.size()) {
             int idx = id - ID_CHK_REGION_START;
