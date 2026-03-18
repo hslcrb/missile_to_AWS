@@ -1,15 +1,13 @@
-# Missile-to-AWS (MTA) License
+# AWS Cleaner License
 
-본 소프트웨어는 MIT 라이선스 하에 배포됩니다.
+This software is released under the MIT License.
 
-Copyright (c) 이호세 Rheehose (Rhee Creative) 2008-2026
+Copyright (c) 2008-2026 Rheehose (Rhee Creative)
 
-이 프로젝트에 포함되거나 이 프로젝트가 래핑하는 `aws-nuke.exe` 바이너리의 원저작권은 Erik Kristensen 및 reBuy reCommerce GmbH에 있으며, 해당 도구 또한 MIT 라이선스를 따릅니다.
-원본 리포지토리 주소: [https://github.com/ekristen/aws-nuke](https://github.com/ekristen/aws-nuke)
+The `aws-nuke.exe` binary included or wrapped by this project is originally copyrighted by Erik Kristensen and reBuy reCommerce GmbH, and that specific under-the-hood tool is also subject to the MIT License.
+Original Repository: [https://github.com/ekristen/aws-nuke](https://github.com/ekristen/aws-nuke)
 
 ---
-
-## 라이선스_원본(영어로)
 
 The MIT License (MIT)
 
