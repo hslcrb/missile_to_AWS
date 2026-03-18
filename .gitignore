@@ -4,3 +4,7 @@
 #out/
 #build/
 #src-tauri/target/
+*.exe
+*.res
+*.obj
+data/
