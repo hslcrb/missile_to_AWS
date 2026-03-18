@@ -30,9 +30,7 @@ typedef NTSTATUS(NTAPI* pNtUnmapViewOfSection)(HANDLE, PVOID);
 #define ID_EDIT_ACCESS_KEY 2002
 #define ID_EDIT_SECRET_KEY 2003
 #define ID_EDIT_LOGS 2004
-#define ID_CHK_SAFE1 4001
-#define ID_CHK_SAFE2 4002
-#define ID_CHK_SAFE3 4003
+#define ID_BTN_CANCEL 1003
 #define ID_CHK_SHOW_SECRET 4004
 #define ID_INDICATOR_IME 5001
 #define ID_INDICATOR_CAPS 5002
@@ -55,10 +53,10 @@ std::vector<AWSRegion> g_regions = {
     {L"sa-east-1", false}, {L"global", true}
 };
 
-HWND g_hAccount, g_hAccessKey, g_hSecretKey, g_hLogs, g_hBtnSave, g_hBtnNuke, g_hChkShowSecret, g_hImeIndicator, g_hCapsIndicator;
-HWND g_hChkSafe[3];
+HWND g_hAccount, g_hAccessKey, g_hSecretKey, g_hLogs, g_hBtnSave, g_hBtnNuke, g_hBtnCancel, g_hChkShowSecret, g_hImeIndicator, g_hCapsIndicator;
 HWND g_hwndSelectAll = NULL;
 bool g_selectAll = false;
+int g_nukeCountdown = 0;
 HBITMAP g_hNukeBmpFull = NULL, g_hNukeBmpDim = NULL;
 HANDLE g_hNukeStdinWrite = NULL;
 WNDPROC g_OldEditProc = NULL;
@@ -70,7 +68,6 @@ int g_protectedTerminalLength = 0;
 
 void SaveFiles(HWND hwnd);
 void AppendLog(const std::wstring& text);
-void UpdateNukeButtonState();
 
 void LoadMTAConfig() {
     wchar_t exePath[MAX_PATH];
@@ -512,18 +509,6 @@ void RunNuke(HWND hwnd) {
     CreateThread(NULL, 0, RunNukeAsync, hwnd, 0, NULL);
 }
 
-void UpdateNukeButtonState() {
-    bool allChecked = true;
-    for (int i = 0; i < 3; ++i) {
-        if (SendMessage(g_hChkSafe[i], BM_GETCHECK, 0, 0) != BST_CHECKED) {
-            allChecked = false;
-            break;
-        }
-    }
-    EnableWindow(g_hBtnNuke, allChecked);
-    SendMessage(g_hBtnNuke, STM_SETIMAGE, IMAGE_BITMAP, (LPARAM)(allChecked ? g_hNukeBmpFull : g_hNukeBmpDim));
-}
-
 LRESULT CALLBACK WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) {
     switch (uMsg) {
     case WM_CREATE: {
@@ -595,20 +580,15 @@ LRESULT CALLBACK WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) 
             SendMessage(hwndTT, TTM_ADDTOOL, 0, (LPARAM)&ti);
         }
 
-        int bombY = groupY + groupH + 15;
-        CreateWindow(L"STATIC", L"● BOMB", WS_VISIBLE | WS_CHILD, 20, bombY, 80, 25, hwnd, NULL, NULL, NULL);
-        for (int i = 0; i < 3; ++i) {
-            g_hChkSafe[i] = CreateWindow(L"BUTTON", L"", WS_VISIBLE | WS_CHILD | BS_AUTOCHECKBOX, 100 + (i * 30), bombY, 20, 20, hwnd, (HMENU)(ID_CHK_SAFE1 + i), NULL, NULL);
-        }
-
-        int nukeY = bombY + 30;
+        int nukeY = groupY + groupH + 15; // Move Nuke up
         int targetW_Nuke = 180;
         int nukeH;
         g_hNukeBmpFull = LoadPNGFromResource(IDB_NUKE_PNG, targetW_Nuke, nukeH, 1.0f);
-        g_hNukeBmpDim = LoadPNGFromResource(IDB_NUKE_PNG, targetW_Nuke, nukeH, 0.4f);
 
-        g_hBtnNuke = CreateWindow(L"STATIC", L"", WS_VISIBLE | WS_CHILD | SS_BITMAP | SS_NOTIFY | WS_DISABLED, 20, nukeY, targetW_Nuke, nukeH, hwnd, (HMENU)ID_BTN_NUKE, NULL, NULL);
-        if (g_hNukeBmpDim) SendMessage(g_hBtnNuke, STM_SETIMAGE, IMAGE_BITMAP, (LPARAM)g_hNukeBmpDim);
+        g_hBtnNuke = CreateWindow(L"STATIC", L"", WS_VISIBLE | WS_CHILD | SS_BITMAP | SS_NOTIFY, 20, nukeY, targetW_Nuke, nukeH, hwnd, (HMENU)ID_BTN_NUKE, NULL, NULL);
+        if (g_hNukeBmpFull) SendMessage(g_hBtnNuke, STM_SETIMAGE, IMAGE_BITMAP, (LPARAM)g_hNukeBmpFull);
+
+        g_hBtnCancel = CreateWindow(L"BUTTON", L"취소", WS_VISIBLE | WS_CHILD | BS_PUSHBUTTON | WS_DISABLED, 20 + targetW_Nuke + 20, nukeY + (nukeH - 40) / 2, 80, 40, hwnd, (HMENU)ID_BTN_CANCEL, NULL, NULL);
         
         // --- LOGS Section ---
         int logsLblY = nukeY + nukeH + 5; // Moved up closer
@@ -638,6 +618,20 @@ LRESULT CALLBACK WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) 
         return 0;
     }
     case WM_TIMER: {
+        if (wParam == 2) {
+            if (g_nukeCountdown > 0) {
+                wchar_t msg[128];
+                swprintf(msg, 128, L"[MTA] ... %d초 전\r\n", g_nukeCountdown);
+                AppendLog(msg);
+                g_nukeCountdown--;
+                if (g_nukeCountdown == 0) {
+                    KillTimer(hwnd, 2);
+                    AppendLog(L"[MTA] 삭제 명령을 실행합니다!\r\n");
+                    EnableWindow(g_hBtnCancel, FALSE);
+                    RunNuke(hwnd);
+                }
+            }
+        }
         if (wParam == 1) {
             // IME check
             HIMC hImc = ImmGetContext(hwnd);
@@ -783,7 +777,22 @@ LRESULT CALLBACK WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) 
             CreateThread(NULL, 0, SaveFilesAsync, hwnd, 0, NULL);
         }
         if (id == ID_BTN_NUKE && (code == BN_CLICKED || code == STN_CLICKED)) {
-            RunNuke(hwnd);
+            if (g_nukeCountdown == 0) {
+                g_nukeCountdown = 5;
+                EnableWindow(g_hBtnNuke, FALSE);
+                EnableWindow(g_hBtnCancel, TRUE);
+                AppendLog(L"[MTA] **경고** 5초 뒤 삭제를 진행합니다. 취소하려면 '취소' 버튼을 누르세요.\r\n");
+                SetTimer(hwnd, 2, 1000, NULL);
+            }
+        }
+        if (id == ID_BTN_CANCEL && code == BN_CLICKED) {
+            if (g_nukeCountdown > 0) {
+                KillTimer(hwnd, 2);
+                g_nukeCountdown = 0;
+                AppendLog(L"[MTA] 삭제 작업이 취소되었습니다.\r\n");
+                EnableWindow(g_hBtnNuke, TRUE);
+                EnableWindow(g_hBtnCancel, FALSE);
+            }
         }
         if (id == ID_CHK_SELECT_ALL) {
             g_selectAll = !g_selectAll;
@@ -804,7 +813,6 @@ LRESULT CALLBACK WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) 
             SetFocus(g_hSecretKey); // Force update
             InvalidateRect(g_hSecretKey, NULL, TRUE);
         }
-        if (id >= ID_CHK_SAFE1 && id <= ID_CHK_SAFE3) UpdateNukeButtonState();
         return 0;
     }
     case WM_DESTROY:
