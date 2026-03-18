@@ -559,7 +559,7 @@ LRESULT CALLBACK WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) 
 
         // Region selection group box
         int groupY = startY + 95; 
-        int groupH = 200; // Increased to prevent overlapping
+        int groupH = 240; // Increased to fit SAVE button inside
         CreateWindow(L"BUTTON", L"리소스를 삭제할 리전을 선택해주세요", WS_VISIBLE | WS_CHILD | BS_GROUPBOX, 15, groupY, 560, groupH, hwnd, NULL, NULL, NULL);
 
         g_hwndSelectAll = CreateWindow(L"BUTTON", L"", WS_VISIBLE | WS_CHILD | BS_OWNERDRAW | BS_MULTILINE, 450, groupY + 30, 80, 140, hwnd, (HMENU)ID_CHK_SELECT_ALL, NULL, NULL);
@@ -576,15 +576,26 @@ LRESULT CALLBACK WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) 
         }
 
         // --- Optimized Section: SAVE, BOMB, NUKE ---
-        int saveY = groupY + groupH + 15; 
+        int saveY = groupY + 185; 
         int targetW_Save = 110; // Enlarge Save button
         int saveH;
         HBITMAP hSaveBmp = LoadPNGFromResource(IDB_SAVE_PNG, targetW_Save, saveH);
         
-        HWND hBtnSave = CreateWindow(L"STATIC", L"", WS_VISIBLE | WS_CHILD | SS_BITMAP | SS_NOTIFY, 20, saveY, targetW_Save, saveH, hwnd, (HMENU)ID_BTN_SAVE, NULL, NULL);
-        if (hSaveBmp) SendMessage(hBtnSave, STM_SETIMAGE, IMAGE_BITMAP, (LPARAM)hSaveBmp);
+        g_hBtnSave = CreateWindow(L"STATIC", L"", WS_VISIBLE | WS_CHILD | SS_BITMAP | SS_NOTIFY, 25, saveY, targetW_Save, saveH, hwnd, (HMENU)ID_BTN_SAVE, NULL, NULL);
+        if (hSaveBmp) SendMessage(g_hBtnSave, STM_SETIMAGE, IMAGE_BITMAP, (LPARAM)hSaveBmp);
 
-        int bombY = saveY + saveH + 15;
+        HWND hwndTT = CreateWindowEx(WS_EX_TOPMOST, TOOLTIPS_CLASS, NULL, WS_POPUP | TTS_ALWAYSTIP | TTS_NOPREFIX, CW_USEDEFAULT, CW_USEDEFAULT, CW_USEDEFAULT, CW_USEDEFAULT, hwnd, NULL, GetModuleHandle(NULL), NULL);
+        if (hwndTT) {
+            TOOLINFO ti = { 0 };
+            ti.cbSize = sizeof(TOOLINFO);
+            ti.uFlags = TTF_IDISHWND | TTF_SUBCLASS;
+            ti.hwnd = hwnd;
+            ti.uId = (UINT_PTR)g_hBtnSave;
+            ti.lpszText = (LPWSTR)L"설정 정보를 저장";
+            SendMessage(hwndTT, TTM_ADDTOOL, 0, (LPARAM)&ti);
+        }
+
+        int bombY = groupY + groupH + 15;
         CreateWindow(L"STATIC", L"● BOMB", WS_VISIBLE | WS_CHILD, 20, bombY, 80, 25, hwnd, NULL, NULL, NULL);
         for (int i = 0; i < 3; ++i) {
             g_hChkSafe[i] = CreateWindow(L"BUTTON", L"", WS_VISIBLE | WS_CHILD | BS_AUTOCHECKBOX, 100 + (i * 30), bombY, 20, 20, hwnd, (HMENU)(ID_CHK_SAFE1 + i), NULL, NULL);
