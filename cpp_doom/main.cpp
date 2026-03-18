@@ -73,7 +73,7 @@ void AppendLog(const std::wstring& text);
 
 bool IsPriorityResource(const wchar_t* res) {
     if (!res) return false;
-    static const wchar_t* priorities[] = { L"VPC", L"S3Bucket", L"EC2Instance", L"RDSInstance", L"IAMUser", L"LambdaFunction" };
+    static const wchar_t* priorities[] = { L"EC2Instance", L"EC2VPC", L"IAMUser", L"LambdaFunction", L"RDSInstance", L"S3Bucket" };
     for (int i = 0; i < 6; ++i) {
         if (wcscmp(res, priorities[i]) == 0) return true;
     }
