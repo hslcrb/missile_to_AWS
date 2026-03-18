@@ -842,17 +842,17 @@ LRESULT CALLBACK WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) 
         int groupH = 220; // Adjusted for shifted position
         CreateWindow(L"BUTTON", L"리소스를 삭제할 리전을 선택해주세요", WS_VISIBLE | WS_CHILD | BS_GROUPBOX, 15, groupY, 560, groupH, hwnd, NULL, NULL, NULL);
 
-        g_hwndSelectAll = CreateWindow(L"BUTTON", L"", WS_VISIBLE | WS_CHILD | BS_OWNERDRAW | BS_MULTILINE, 450, groupY + 30, 80, 140, hwnd, (HMENU)ID_CHK_SELECT_ALL, NULL, NULL);
+        g_hwndSelectAll = CreateWindow(L"BUTTON", L"", WS_VISIBLE | WS_CHILD | BS_OWNERDRAW | BS_MULTILINE, 425, groupY + 30, 65, 140, hwnd, (HMENU)ID_CHK_SELECT_ALL, NULL, NULL);
 
         int columns = 3;
         int itemsPerColumn = (int)((g_regions.size() + columns - 1) / columns);
         for (int i = 0; i < (int)g_regions.size(); ++i) {
             int col = i / itemsPerColumn;
             int row = i % itemsPerColumn;
-            int x = 20 + (col * 140); // Tighter horizontal spacing to make room for Select All
+            int x = 20 + (col * 135); // Tighter horizontal spacing
             int y = groupY + 30 + (row * 24); // Tighter vertical padding inside group
             // Use BS_OWNERDRAW for custom rich-text rendering
-            g_regions[i].hwnd = CreateWindow(L"BUTTON", g_regions[i].name.c_str(), WS_VISIBLE | WS_CHILD | BS_OWNERDRAW, x, y, 150, 24, hwnd, (HMENU)(ID_CHK_REGION_START + i), NULL, NULL);
+            g_regions[i].hwnd = CreateWindow(L"BUTTON", g_regions[i].name.c_str(), WS_VISIBLE | WS_CHILD | BS_OWNERDRAW, x, y, 130, 24, hwnd, (HMENU)(ID_CHK_REGION_START + i), NULL, NULL);
         }
 
         // --- Optimized Section: SAVE, BOMB, NUKE ---
