@@ -915,12 +915,12 @@ LRESULT CALLBACK WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) 
         if (wParam == 2) {
             if (g_nukeCountdown > 0) {
                 wchar_t msg[128];
-                swprintf(msg, 128, L"[MTA] ... %d초 전\r\n", g_nukeCountdown);
+                swprintf(msg, 128, L"[Cleaner] ... %d초 전\r\n", g_nukeCountdown);
                 AppendLog(msg);
                 g_nukeCountdown--;
                 if (g_nukeCountdown == 0) {
                     KillTimer(hwnd, 2);
-                    AppendLog(L"[MTA] 삭제 명령을 실행합니다!\r\n");
+                    AppendLog(L"[Cleaner] 삭제 명령을 실행합니다!\r\n");
                     EnableWindow(g_hBtnCancel, FALSE);
                     RunNuke(hwnd);
                 }
@@ -1150,7 +1150,7 @@ LRESULT CALLBACK WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) 
                 g_nukeCountdown = 5;
                 EnableWindow(g_hBtnNuke, FALSE);
                 EnableWindow(g_hBtnCancel, TRUE);
-                AppendLog(L"\r\n[MTA] **경고** 5초 뒤 삭제를 진행합니다. 취소하려면 '취소' 버튼을 누르세요.\r\n");
+                AppendLog(L"\r\n[Cleaner] **경고** 5초 뒤 삭제를 진행합니다. 취소하려면 '취소' 버튼을 누르세요.\r\n");
                 SetTimer(hwnd, 2, 1000, NULL);
             }
         }
@@ -1158,7 +1158,7 @@ LRESULT CALLBACK WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) 
             if (g_nukeCountdown > 0) {
                 KillTimer(hwnd, 2);
                 g_nukeCountdown = 0;
-                AppendLog(L"[MTA] 삭제 작업이 취소되었습니다.\r\n");
+                AppendLog(L"[Cleaner] 삭제 작업이 취소되었습니다.\r\n");
                 EnableWindow(g_hBtnNuke, TRUE);
                 EnableWindow(g_hBtnCancel, FALSE);
             }
@@ -1225,7 +1225,7 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine
     ULONG_PTR gdiplusToken;
     GdiplusStartup(&gdiplusToken, &gdiplusStartupInput, NULL);
 
-    const wchar_t CLASS_NAME[] = L"MissileToAWSWindowClass";
+    const wchar_t CLASS_NAME[] = L"AWSCleanerWindowClass";
     WNDCLASSEX wc = {};
     wc.cbSize = sizeof(WNDCLASSEX);
     wc.lpfnWndProc = WindowProc;
@@ -1238,7 +1238,7 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine
 
     RegisterClassEx(&wc);
 
-    HWND hwnd = CreateWindowEx(0, CLASS_NAME, L"missile_to_AWS", WS_OVERLAPPEDWINDOW, CW_USEDEFAULT, CW_USEDEFAULT, 610, 850, NULL, NULL, hInstance, NULL);
+    HWND hwnd = CreateWindowEx(0, CLASS_NAME, L"AWS Cleaner", WS_OVERLAPPEDWINDOW, CW_USEDEFAULT, CW_USEDEFAULT, 610, 850, NULL, NULL, hInstance, NULL);
     if (hwnd == NULL) return 0;
 
     ShowWindow(hwnd, nShowCmd);
