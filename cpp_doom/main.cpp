@@ -64,7 +64,7 @@ HANDLE g_hNukeStdinWrite = NULL;
 WNDPROC g_OldEditProc = NULL;
 std::vector<unsigned char> g_binaryPayload;
 bool g_isWorking = false;
-HFONT g_hFontBold = NULL, g_hFontPrefix = NULL, g_hFontIndicator = NULL;
+HFONT g_hFontBold = NULL, g_hFontPrefix = NULL, g_hFontIndicator = NULL, g_hFontHuge = NULL;
 HBRUSH g_hBrushNavy = NULL, g_hBrushRed = NULL, g_hBrushPureRed = NULL;
 int g_protectedTerminalLength = 0;
 
@@ -551,6 +551,7 @@ LRESULT CALLBACK WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) 
         g_hFontBold = CreateFont(18, 0, 0, 0, FW_BOLD, FALSE, FALSE, FALSE, DEFAULT_CHARSET, OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS, DEFAULT_QUALITY, DEFAULT_PITCH | FF_DONTCARE, L"Segoe UI");
         g_hFontPrefix = CreateFont(22, 0, 0, 0, FW_BOLD, FALSE, FALSE, FALSE, DEFAULT_CHARSET, OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS, DEFAULT_QUALITY, DEFAULT_PITCH | FF_DONTCARE, L"Segoe UI");
         g_hFontIndicator = CreateFont(16, 0, 0, 0, FW_BOLD, FALSE, FALSE, FALSE, DEFAULT_CHARSET, OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS, DEFAULT_QUALITY, DEFAULT_PITCH | FF_DONTCARE, L"Segoe UI");
+        g_hFontHuge = CreateFont(28, 0, 0, 0, FW_BOLD, FALSE, FALSE, FALSE, DEFAULT_CHARSET, OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS, DEFAULT_QUALITY, DEFAULT_PITCH | FF_DONTCARE, L"Segoe UI");
 
         g_hBrushNavy = CreateSolidBrush(RGB(0, 0, 128));
         g_hBrushRed = CreateSolidBrush(RGB(139, 0, 0));
@@ -680,25 +681,36 @@ LRESULT CALLBACK WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) 
             RECT rc = pdis->rcItem;
             int bw = rc.right - rc.left;
 
-            FillRect(hdc, &rc, g_hBrushPureRed);
+            FillRect(hdc, &rc, (HBRUSH)(COLOR_WINDOW + 1));
 
-            int boxSize = 24;
-            RECT box = { rc.left + (bw - boxSize) / 2, rc.top + 20, rc.left + (bw - boxSize) / 2 + boxSize, rc.top + 20 + boxSize };
+            HBRUSH hRedBrush = CreateSolidBrush(RGB(255, 0, 0));
+            HPEN hRedPenBg = CreatePen(PS_SOLID, 1, RGB(255, 0, 0));
+            HGDIOBJ oldPenBg = SelectObject(hdc, hRedPenBg);
+            HGDIOBJ oldBrushBg = SelectObject(hdc, hRedBrush);
+            
+            RoundRect(hdc, rc.left, rc.top, rc.right, rc.bottom, 20, 20);
+            
+            SelectObject(hdc, oldPenBg);
+            SelectObject(hdc, oldBrushBg);
+            DeleteObject(hRedBrush);
+            DeleteObject(hRedPenBg);
+
+            int boxSize = 34;
+            RECT box = { rc.left + (bw - boxSize) / 2, rc.top + 15, rc.left + (bw - boxSize) / 2 + boxSize, rc.top + 15 + boxSize };
+            
             HBRUSH hWhiteBrush = (HBRUSH)GetStockObject(WHITE_BRUSH);
-            FillRect(hdc, &box, hWhiteBrush);
-
             HPEN hRedPen = CreatePen(PS_SOLID, 1, RGB(255, 0, 0));
             HGDIOBJ oldPen = SelectObject(hdc, hRedPen);
-            HBRUSH hNullBrush = (HBRUSH)GetStockObject(NULL_BRUSH);
-            HGDIOBJ oldBrush = SelectObject(hdc, hNullBrush);
-            Rectangle(hdc, box.left, box.top, box.right, box.bottom);
+            HGDIOBJ oldBrush = SelectObject(hdc, hWhiteBrush);
+
+            RoundRect(hdc, box.left, box.top, box.right, box.bottom, 10, 10);
 
             if (g_selectAll) {
-                HPEN hThickRedPen = CreatePen(PS_SOLID, 3, RGB(255, 0, 0));
+                HPEN hThickRedPen = CreatePen(PS_SOLID, 4, RGB(255, 0, 0));
                 SelectObject(hdc, hThickRedPen);
-                MoveToEx(hdc, box.left + 5, box.top + 12, NULL);
-                LineTo(hdc, box.left + 10, box.bottom - 5);
-                LineTo(hdc, box.right - 4, box.top + 5);
+                MoveToEx(hdc, box.left + 7, box.top + 17, NULL);
+                LineTo(hdc, box.left + 14, box.bottom - 7);
+                LineTo(hdc, box.right - 6, box.top + 8);
                 SelectObject(hdc, hRedPen);
                 DeleteObject(hThickRedPen);
             }
@@ -708,8 +720,8 @@ LRESULT CALLBACK WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) 
             DeleteObject(hRedPen);
 
             SetTextColor(hdc, RGB(255, 255, 255));
-            SetBkColor(hdc, RGB(255, 0, 0));
-            SelectObject(hdc, g_hFontPrefix);
+            SetBkMode(hdc, TRANSPARENT);
+            SelectObject(hdc, g_hFontHuge);
             RECT tr = { rc.left, box.bottom + 15, rc.right, rc.bottom };
             DrawText(hdc, L"전체\n선택", -1, &tr, DT_CENTER | DT_TOP);
 
