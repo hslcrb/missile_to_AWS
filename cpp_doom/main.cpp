@@ -75,8 +75,8 @@ bool IsPriorityResource(const wchar_t* res) {
 
 LRESULT CALLBACK ComboEditProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) {
     if (uMsg == WM_SETCURSOR) {
-        while (ShowCursor(TRUE) < 1); // Force show
-        SetCursor(LoadCursor(NULL, IDC_IBEAM));
+        while (ShowCursor(TRUE) < 5); // Over-force show
+        SetCursor(LoadCursor(NULL, IDC_ARROW)); // Using Arrow instead of IBeam as user requested 'persistent existing cursor'
         return 1;
     }
     if (uMsg == WM_MOUSEMOVE || uMsg == WM_CHAR || uMsg == WM_KEYDOWN) {
@@ -134,6 +134,7 @@ int GetFuzzyScore(const std::wstring& search, const std::wstring& target) {
 }
 
 void FilterResourceList(const std::wstring& search) {
+    while (ShowCursor(TRUE) < 5); // Force cursor visibility even during filter loop
     g_filteredIndices.clear();
     
     std::vector<std::wstring> keywords;
@@ -1152,6 +1153,15 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine
     while (GetMessage(&msg, NULL, 0, 0)) {
         TranslateMessage(&msg);
         DispatchMessage(&msg);
+        
+        // ULTIMATE CURSOR PROTECTION: Force cursor visible after every message
+        CURSORINFO ci = { sizeof(CURSORINFO) };
+        ci.cbSize = sizeof(CURSORINFO);
+        if (GetCursorInfo(&ci)) {
+            if (!(ci.flags & CURSOR_SHOWING)) {
+                while (ShowCursor(TRUE) < 1);
+            }
+        }
     }
 
     GdiplusShutdown(gdiplusToken);
