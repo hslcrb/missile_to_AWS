@@ -76,7 +76,14 @@ bool IsPriorityResource(const wchar_t* res) {
 LRESULT CALLBACK ComboEditProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) {
     if (uMsg == WM_SETCURSOR) {
         SetCursor(LoadCursor(NULL, IDC_IBEAM));
-        return TRUE;
+        return 1;
+    }
+    if (uMsg == WM_MOUSEMOVE) {
+        // Force cursor visible if not
+        CURSORINFO ci = { sizeof(CURSORINFO) };
+        if (GetCursorInfo(&ci) && !(ci.flags & CURSOR_SHOWING)) {
+            ShowCursor(TRUE);
+        }
     }
     if (uMsg == WM_IME_STARTCOMPOSITION) {
         g_isIMEComposing = true;
@@ -831,24 +838,30 @@ LRESULT CALLBACK WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) 
             }
         }
         if (wParam == 1) {
-            // IME check
-            HIMC hImc = ImmGetContext(hwnd);
-            DWORD dwConv, dwSent;
-            bool isKorean = false;
-            if (hImc) {
-                if (ImmGetConversionStatus(hImc, &dwConv, &dwSent)) {
-                    isKorean = (dwConv & IME_CMODE_NATIVE);
+            // Check if we are in search mode or some heavy UI interaction, slow down if needed
+            HWND focused = GetFocus();
+            if (focused == g_hResourceFilter || GetParent(focused) == g_hResourceFilter) {
+                // Focused on ComboBox Edit box, reduce timer frequency logic or skip Invalidate
+            } else {
+                // IME check
+                HIMC hImc = ImmGetContext(hwnd);
+                DWORD dwConv, dwSent;
+                bool isKorean = false;
+                if (hImc) {
+                    if (ImmGetConversionStatus(hImc, &dwConv, &dwSent)) {
+                        isKorean = (dwConv & IME_CMODE_NATIVE);
+                    }
+                    ImmReleaseContext(hwnd, hImc);
                 }
-                ImmReleaseContext(hwnd, hImc);
+                SetWindowText(g_hImeIndicator, isKorean ? L"[한]" : L"[A]");
+
+                // CapsLock check
+                bool capsOn = (GetKeyState(VK_CAPITAL) & 0x0001) != 0;
+                ShowWindow(g_hCapsIndicator, capsOn ? SW_SHOW : SW_HIDE);
+
+                InvalidateRect(g_hImeIndicator, NULL, TRUE);
+                InvalidateRect(g_hCapsIndicator, NULL, TRUE);
             }
-            SetWindowText(g_hImeIndicator, isKorean ? L"[한]" : L"[A]");
-
-            // CapsLock check
-            bool capsOn = (GetKeyState(VK_CAPITAL) & 0x0001) != 0;
-            ShowWindow(g_hCapsIndicator, capsOn ? SW_SHOW : SW_HIDE);
-
-            InvalidateRect(g_hImeIndicator, NULL, TRUE);
-            InvalidateRect(g_hCapsIndicator, NULL, TRUE);
         }
         break;
     }
@@ -1017,9 +1030,24 @@ LRESULT CALLBACK WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) 
         }
         break;
     }
+    case WM_MOUSEMOVE: {
+        CURSORINFO ci = { sizeof(CURSORINFO) };
+        if (GetCursorInfo(&ci) && !(ci.flags & CURSOR_SHOWING)) {
+            ShowCursor(TRUE);
+        }
+        break;
+    }
     case WM_SETCURSOR:
         if (g_isWorking && LOWORD(lParam) == HTCLIENT) {
             SetCursor(LoadCursor(NULL, IDC_APPSTARTING));
+            return TRUE;
+        }
+        if (LOWORD(lParam) == HTCLIENT) {
+            if ((HWND)wParam != hwnd) {
+                // Let child windows (Edit, ComboBox) handle their own cursors
+                return CallWindowProc((WNDPROC)GetWindowLongPtr((HWND)wParam, GWLP_WNDPROC), (HWND)wParam, uMsg, wParam, lParam);
+            }
+            SetCursor(LoadCursor(NULL, IDC_ARROW));
             return TRUE;
         }
         break;
