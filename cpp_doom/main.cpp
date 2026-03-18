@@ -93,6 +93,9 @@ LRESULT CALLBACK ComboListProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lPara
     if (uMsg == WM_RBUTTONDOWN || uMsg == WM_RBUTTONUP) {
         if (uMsg == WM_RBUTTONDOWN) {
             POINT pt = { LOWORD(lParam), HIWORD(lParam) };
+            int topIdx = (int)SendMessage(hwnd, LB_GETTOPINDEX, 0, 0);
+            int curSel = (int)SendMessage(hwnd, LB_GETCURSEL, 0, 0);
+            
             int idx = (int)SendMessage(hwnd, LB_ITEMFROMPOINT, 0, lParam);
             if (HIWORD(idx) == 0) {
                 int itemIdx = LOWORD(idx);
@@ -123,9 +126,12 @@ LRESULT CALLBACK ComboListProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lPara
                         InvalidateRect(GetParent(GetParent(hwnd)), NULL, TRUE);
                         AppendLog(L"[INFO] 즐겨찾기에서 제거되었습니다: " + name + L"\r\n");
                     }
-                    
-                    // Force the dropdown to stay open
-                    PostMessage(GetParent(hwnd), CB_SHOWDROPDOWN, TRUE, 0);
+
+                    // Keep it open and restore scroll/selection
+                    HWND hCombo = GetParent(hwnd);
+                    SendMessage(hCombo, CB_SHOWDROPDOWN, TRUE, 0);
+                    SendMessage(hwnd, LB_SETCURSEL, curSel, 0);
+                    SendMessage(hwnd, LB_SETTOPINDEX, topIdx, 0);
                 }
             }
         }
