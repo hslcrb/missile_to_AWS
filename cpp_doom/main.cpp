@@ -97,13 +97,14 @@ LRESULT CALLBACK ComboEditProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lPara
                 int sel = (int)SendMessage(hCombo, CB_GETCURSEL, 0, 0);
                 if (sel != CB_ERR) {
                     wchar_t buf[256];
-                    SendMessage(hCombo, CB_GETLBTEXT, sel, (LPARAM)buf);
-                    SetWindowText(hwnd, buf);
-                    SendMessage(hCombo, CB_SETCURSEL, sel, 0);
-                    SendMessage(hCombo, CB_SHOWDROPDOWN, FALSE, 0);
-                    SendMessage(hwnd, EM_SETSEL, 0, -1);
-                    PostMessage(GetParent(hCombo), WM_COMMAND, MAKEWPARAM(ID_COMBO_RESOURCE, CBN_SELCHANGE), (LPARAM)hCombo);
-                    return 0;
+                    if (SendMessage(hCombo, CB_GETLBTEXT, sel, (LPARAM)buf) != CB_ERR) {
+                        SetWindowText(hwnd, buf);
+                        SendMessage(hCombo, CB_SETCURSEL, sel, 0);
+                        SendMessage(hCombo, CB_SHOWDROPDOWN, FALSE, 0);
+                        SendMessage(hwnd, EM_SETSEL, 0, -1);
+                        PostMessage(GetParent(hCombo), WM_COMMAND, MAKEWPARAM(ID_COMBO_RESOURCE, CBN_SELCHANGE), (LPARAM)hCombo);
+                        return 0;
+                    }
                 }
             }
         }
@@ -787,7 +788,7 @@ LRESULT CALLBACK WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) 
         g_hChkShowSecret = CreateWindow(L"BUTTON", L"Show", WS_VISIBLE | WS_CHILD | BS_AUTOCHECKBOX, 510, startY + 58, 60, 22, hwnd, (HMENU)ID_CHK_SHOW_SECRET, NULL, NULL);
 
         CreateWindow(L"STATIC", L"Resource Filter :", WS_VISIBLE | WS_CHILD, 20, startY + 90, 120, 20, hwnd, NULL, NULL, NULL);
-        g_hResourceFilter = CreateWindow(L"COMBOBOX", L"", WS_VISIBLE | WS_CHILD | CBS_DROPDOWN | CBS_OWNERDRAWFIXED | WS_VSCROLL | WS_HSCROLL, 150, startY + 87, 250, 400, hwnd, (HMENU)ID_COMBO_RESOURCE, NULL, NULL);
+        g_hResourceFilter = CreateWindow(L"COMBOBOX", L"", WS_VISIBLE | WS_CHILD | CBS_DROPDOWN | CBS_OWNERDRAWFIXED | CBS_HASSTRINGS | WS_VSCROLL | WS_HSCROLL, 150, startY + 87, 250, 400, hwnd, (HMENU)ID_COMBO_RESOURCE, NULL, NULL);
         SendMessage(g_hResourceFilter, CB_SETHORIZONTALEXTENT, 600, 0); // Enable horizontal scroll
         
         // Sorting ComboBox
