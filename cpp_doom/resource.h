@@ -2,3 +2,4 @@
 #define IDB_SAVE_PNG 102
 #define IDB_NUKE_PNG 103
 #define IDB_MTA_PNG 104
+#define ID_COMBO_RESOURCE 2005

@@ -53,7 +53,7 @@ std::vector<AWSRegion> g_regions = {
     {L"sa-east-1", false}, {L"global", true}
 };
 
-HWND g_hAccount, g_hAccessKey, g_hSecretKey, g_hLogs, g_hBtnSave, g_hBtnNuke, g_hBtnCancel, g_hChkShowSecret, g_hImeIndicator, g_hCapsIndicator;
+HWND g_hAccount, g_hAccessKey, g_hSecretKey, g_hLogs, g_hBtnSave, g_hBtnNuke, g_hBtnCancel, g_hChkShowSecret, g_hImeIndicator, g_hCapsIndicator, g_hResourceFilter;
 HWND g_hwndSelectAll = NULL;
 bool g_selectAll = false;
 int g_nukeCountdown = 0;
@@ -437,6 +437,17 @@ void SaveFiles(HWND hwnd) {
     config_file << L"- \"999999999999\"\n";
     config_file << L"accounts:\n";
     config_file << L"  \"" << account << L"\": {}\n";
+    
+    // Resource Filtering
+    int sel = (int)SendMessage(g_hResourceFilter, CB_GETCURSEL, 0, 0);
+    if (sel > 0) { // 0 is "<모두>"
+        wchar_t type[256];
+        SendMessage(g_hResourceFilter, CB_GETLBTEXT, sel, (LPARAM)type);
+        config_file << L"resource-types:\n";
+        config_file << L"  targets:\n";
+        config_file << L"  - \"" << type << L"\"\n";
+    }
+
     config_file.close();
 
     // Save MTA config ([EXE_NAME]_mta.json)
@@ -544,6 +555,12 @@ LRESULT CALLBACK WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) 
         
         g_hChkShowSecret = CreateWindow(L"BUTTON", L"Show", WS_VISIBLE | WS_CHILD | BS_AUTOCHECKBOX, 510, startY + 58, 60, 22, hwnd, (HMENU)ID_CHK_SHOW_SECRET, NULL, NULL);
 
+        CreateWindow(L"STATIC", L"Resource Filter :", WS_VISIBLE | WS_CHILD, 20, startY + 90, 120, 20, hwnd, NULL, NULL, NULL);
+        g_hResourceFilter = CreateWindow(L"COMBOBOX", L"", WS_VISIBLE | WS_CHILD | CBS_DROPDOWNLIST | WS_VSCROLL, 150, startY + 87, 200, 200, hwnd, (HMENU)ID_COMBO_RESOURCE, NULL, NULL);
+        const wchar_t* filters[] = { L"<모두>", L"VPC", L"S3Bucket", L"EC2Instance", L"RDSInstance", L"LambdaFunction", L"IAMUser" };
+        for (int i = 0; i < 7; ++i) SendMessage(g_hResourceFilter, CB_ADDSTRING, 0, (LPARAM)filters[i]);
+        SendMessage(g_hResourceFilter, CB_SETCURSEL, 0, 0);
+
         g_hFontBold = CreateFont(18, 0, 0, 0, FW_BOLD, FALSE, FALSE, FALSE, DEFAULT_CHARSET, OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS, DEFAULT_QUALITY, DEFAULT_PITCH | FF_DONTCARE, L"Segoe UI");
         g_hFontPrefix = CreateFont(22, 0, 0, 0, FW_BOLD, FALSE, FALSE, FALSE, DEFAULT_CHARSET, OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS, DEFAULT_QUALITY, DEFAULT_PITCH | FF_DONTCARE, L"Segoe UI");
         g_hFontIndicator = CreateFont(16, 0, 0, 0, FW_BOLD, FALSE, FALSE, FALSE, DEFAULT_CHARSET, OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS, DEFAULT_QUALITY, DEFAULT_PITCH | FF_DONTCARE, L"Segoe UI");
@@ -554,8 +571,8 @@ LRESULT CALLBACK WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) 
         g_hBrushPureRed = CreateSolidBrush(RGB(255, 0, 0));
 
         // Region selection group box
-        int groupY = startY + 95; 
-        int groupH = 240; // Increased to fit SAVE button inside
+        int groupY = startY + 120; 
+        int groupH = 220; // Adjusted for shifted position
         CreateWindow(L"BUTTON", L"리소스를 삭제할 리전을 선택해주세요", WS_VISIBLE | WS_CHILD | BS_GROUPBOX, 15, groupY, 560, groupH, hwnd, NULL, NULL, NULL);
 
         g_hwndSelectAll = CreateWindow(L"BUTTON", L"", WS_VISIBLE | WS_CHILD | BS_OWNERDRAW | BS_MULTILINE, 450, groupY + 30, 80, 140, hwnd, (HMENU)ID_CHK_SELECT_ALL, NULL, NULL);
