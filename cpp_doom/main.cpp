@@ -1183,7 +1183,7 @@ INT_PTR CALLBACK SettingsDlgProc(HWND hwndDlg, UINT uMsg, WPARAM wParam, LPARAM 
             return (INT_PTR)TRUE;
         }
         if (LOWORD(wParam) == IDOK || LOWORD(wParam) == IDCANCEL) {
-            SendMessage(hwndDlg, WM_CLOSE, 0, 0);
+            PostMessage(hwndDlg, WM_CLOSE, 0, 0);
             return (INT_PTR)TRUE;
         }
         break;
