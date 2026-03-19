@@ -66,6 +66,9 @@ HANDLE g_hCmdStdinWrite = NULL;
 WNDPROC g_OldEditProc = NULL;
 std::vector<unsigned char> g_binaryPayload;
 bool g_isWorking = false;
+// Dirty-flag: set whenever any setting changes; timer debounces the file write
+bool g_isDirty = false;
+int  g_dirtyCooldownTicks = 0; // each tick = 100 ms
 HFONT g_hFontBold = NULL, g_hFontPrefix = NULL, g_hFontIndicator = NULL, g_hFontHuge = NULL, g_hFontNorm = NULL;
 HANDLE g_hFontRes = NULL;
 HBRUSH g_hBrushNavy = NULL, g_hBrushRed = NULL, g_hBrushPureRed = NULL, g_hBrushYellow = NULL, g_hBrushPastelYellow = NULL;
@@ -404,6 +407,33 @@ void LoadMTAConfig() {
                 size_t q2 = line.find(L"\"", q1 + 1);
                 if (q1 != std::wstring::npos && q2 != std::wstring::npos) {
                     g_favorites.insert(line.substr(q1 + 1, q2 - q1 - 1));
+                }
+            }
+        }
+        // Sort order
+        size_t sortPos = line.find(L"\"sort_order\": ");
+        if (sortPos != std::wstring::npos) {
+            std::wstring val = line.substr(sortPos + 14);
+            int so = _wtoi(val.c_str());
+            if (so >= 0 && so <= 2) SendMessage(g_hSortCombo, CB_SETCURSEL, so, 0);
+        }
+        // Resource filter text
+        size_t rfPos = line.find(L"\"resource_filter\": \"");
+        if (rfPos != std::wstring::npos) {
+            std::wstring val = line.substr(rfPos + 20);
+            val = val.substr(0, val.find(L"\""));
+            SetWindowText(g_hResourceFilter, val.c_str());
+        }
+        // Selected regions
+        size_t regPos = line.find(L"\"selected_regions\": [");
+        if (regPos != std::wstring::npos) {
+            for (auto& r : g_regions) r.selected = false; // reset first
+            while (std::getline(f, line) && line.find(L"]") == std::wstring::npos) {
+                size_t q1 = line.find(L"\"");
+                size_t q2 = line.find(L"\"", q1 + 1);
+                if (q1 != std::wstring::npos && q2 != std::wstring::npos) {
+                    std::wstring rname = line.substr(q1 + 1, q2 - q1 - 1);
+                    for (auto& r : g_regions) { if (r.name == rname) { r.selected = true; break; } }
                 }
             }
         }
@@ -832,6 +862,25 @@ void SaveFiles(HWND hwnd) {
     mta_file << L"  \"access_key\": \"" << access << L"\",\n";
     mta_file << L"  \"secret_key\": \"" << secret << L"\",\n";
     mta_file << L"  \"show_secret\": " << (SendMessage(g_hChkShowSecret, BM_GETCHECK, 0, 0) == BST_CHECKED ? L"true" : L"false") << L",\n";
+    // ---- Additional MTA fields ----
+    // Sort order
+    int sortOrder = (int)SendMessage(g_hSortCombo, CB_GETCURSEL, 0, 0);
+    if (sortOrder == CB_ERR) sortOrder = 1;
+    mta_file << L"  \"sort_order\": " << sortOrder << L",\n";
+
+    // Resource filter text
+    wchar_t rfText[128] = {0};
+    GetWindowText(g_hResourceFilter, rfText, 128);
+    mta_file << L"  \"resource_filter\": \"" << rfText << L"\",\n";
+
+    // Selected regions
+    mta_file << L"  \"selected_regions\": [\n";
+    std::vector<std::wstring> selRegions;
+    for (auto& r : g_regions) { if (r.selected) selRegions.push_back(r.name); }
+    for (size_t i = 0; i < selRegions.size(); ++i)
+        mta_file << L"    \"" << selRegions[i] << L"\"" << (i == selRegions.size()-1 ? L"" : L",") << L"\n";
+    mta_file << L"  ],\n";
+
     mta_file << L"  \"favorites\": [\n";
     std::vector<std::wstring> favList(g_favorites.begin(), g_favorites.end());
     for (size_t i = 0; i < favList.size(); ++i) {
@@ -1259,6 +1308,13 @@ LRESULT CALLBACK WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) 
             }
         }
         if (wParam == 1) {
+            // Debounced auto-save: flush any pending dirty state
+            if (g_isDirty && g_dirtyCooldownTicks > 0) {
+                if (--g_dirtyCooldownTicks == 0) {
+                    g_isDirty = false;
+                    if (!g_isWorking) CreateThread(NULL, 0, SaveFilesAsync, hwnd, 0, NULL);
+                }
+            }
             // Check if we are in search mode or some heavy UI interaction, slow down if needed
             HWND focused = GetFocus();
             if (focused == g_hResourceFilter || GetParent(focused) == g_hResourceFilter) {
@@ -1623,21 +1679,33 @@ LRESULT CALLBACK WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) 
             }
             InvalidateRect(g_hwndSelectAll, NULL, TRUE);
         }
+        if (id == ID_CHK_REGION_START - 1) {} // dummy sentinel
         if (id >= ID_CHK_REGION_START && id < ID_CHK_REGION_START + (int)g_regions.size()) {
             int idx = id - ID_CHK_REGION_START;
             g_regions[idx].selected = !g_regions[idx].selected;
             InvalidateRect(g_regions[idx].hwnd, NULL, TRUE);
+            g_isDirty = true; g_dirtyCooldownTicks = 1; // save on next tick
         }
-        if (id == ID_CHK_SHOW_SECRET) {
+        if (id == ID_CHK_SHOW_SECRET && code != BN_CLICKED) {} // handled above
+        // Real-time save triggers for credential/UI changes
+        if ((id == ID_EDIT_ACCOUNT || id == ID_EDIT_ACCESS_KEY || id == ID_EDIT_SECRET_KEY) && code == EN_CHANGE) {
+            g_isDirty = true; g_dirtyCooldownTicks = 20; // 2-second debounce
+        }
+        if (id == ID_CHK_SHOW_SECRET && code == BN_CLICKED) {
             bool checked = (SendMessage(g_hChkShowSecret, BM_GETCHECK, 0, 0) == BST_CHECKED);
             SendMessage(g_hSecretKey, EM_SETPASSWORDCHAR, (checked ? 0 : (WPARAM)L'●'), 0);
             SetFocus(g_hSecretKey); // Force update
             InvalidateRect(g_hSecretKey, NULL, TRUE);
+            g_isDirty = true; g_dirtyCooldownTicks = 1;
         }
         if (id == ID_COMBO_SORT && code == CBN_SELCHANGE) {
             wchar_t search[128];
             GetWindowText(g_hResourceFilter, search, 128);
             SendMessage(hwnd, WM_COMMAND, MAKEWPARAM(ID_COMBO_RESOURCE, CBN_EDITCHANGE), (LPARAM)g_hResourceFilter);
+            g_isDirty = true; g_dirtyCooldownTicks = 1;
+        }
+        if (id == ID_COMBO_RESOURCE && code == CBN_SELCHANGE) {
+            g_isDirty = true; g_dirtyCooldownTicks = 1;
         }
         if (id == ID_COMBO_RESOURCE && code == CBN_EDITCHANGE) {
             if (g_isFiltering || g_isIMEComposing || g_isArrowNav) {
