@@ -4,6 +4,12 @@
   "secret_key": "",
   "show_secret": false,
   "favorites": [
+    "EC2Instance",
+    "EC2VPC",
+    "IAMUser",
+    "LambdaFunction",
+    "RDSInstance",
+    "S3Bucket"
   ],
   "history": [
     "Active code page: 65001\r\r\n",

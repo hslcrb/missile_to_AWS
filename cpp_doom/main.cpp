@@ -312,15 +312,14 @@ void FilterResourceList(const std::wstring& search) {
 }
 
 void LoadMTAConfig() {
-    wchar_t exePath[MAX_PATH];
-    GetModuleFileName(NULL, exePath, MAX_PATH);
-    std::wstring mtaPath = exePath;
-    size_t dotPos = mtaPath.find_last_of(L".");
-    if (dotPos != std::wstring::npos) mtaPath = mtaPath.substr(0, dotPos);
-    mtaPath += L"_mta.json";
+    wchar_t exeDir[MAX_PATH];
+    GetModuleFileName(NULL, exeDir, MAX_PATH);
+    std::wstring dir = exeDir;
+    size_t slash = dir.find_last_of(L"\\/");
+    if (slash != std::wstring::npos) dir = dir.substr(0, slash + 1);
+    std::wstring mtaPath = dir + L"AWSCleaner_mta.json";
 
-    std::wifstream f(mtaPath);
-    if (!f.is_open()) {
+    auto insertDefaults = [&]() {
         g_favorites.insert(L"EC2Instance");
         g_favorites.insert(L"EC2VPC");
         g_favorites.insert(L"IAMUser");
@@ -329,6 +328,27 @@ void LoadMTAConfig() {
         g_favorites.insert(L"S3Bucket");
         g_favorites.insert(L"ESS");
         g_favorites.insert(L"CloudFrontDistribution");
+    };
+
+    std::wifstream f(mtaPath);
+    if (!f.is_open()) {
+        insertDefaults();
+        // Write stub file with just favorites so next load reads them
+        std::wofstream out(mtaPath);
+        if (out.is_open()) {
+            out << L"{\n";
+            out << L"  \"account_id\": \"\",\n";
+            out << L"  \"access_key\": \"\",\n";
+            out << L"  \"secret_key\": \"\",\n";
+            out << L"  \"show_secret\": false,\n";
+            out << L"  \"favorites\": [\n";
+            std::vector<std::wstring> fl(g_favorites.begin(), g_favorites.end());
+            for (size_t i = 0; i < fl.size(); ++i)
+                out << L"    \"" << fl[i] << L"\"" << (i == fl.size()-1 ? L"" : L",") << L"\n";
+            out << L"  ],\n";
+            out << L"  \"history\": []\n";
+            out << L"}\n";
+        }
         return;
     }
 
@@ -379,14 +399,7 @@ void LoadMTAConfig() {
     }
     
     if (!hasFavorites) {
-        g_favorites.insert(L"EC2Instance");
-        g_favorites.insert(L"EC2VPC");
-        g_favorites.insert(L"IAMUser");
-        g_favorites.insert(L"LambdaFunction");
-        g_favorites.insert(L"RDSInstance");
-        g_favorites.insert(L"S3Bucket");
-        g_favorites.insert(L"ESS");
-        g_favorites.insert(L"CloudFrontDistribution");
+        insertDefaults();
     }
 }
 
@@ -794,13 +807,13 @@ void SaveFiles(HWND hwnd) {
 
     config_file.close();
 
-    // Save MTA config ([EXE_NAME]_mta.json)
-    wchar_t exePath[MAX_PATH];
-    GetModuleFileName(NULL, exePath, MAX_PATH);
-    std::wstring mtaPath = exePath;
-    size_t dotPos = mtaPath.find_last_of(L".");
-    if (dotPos != std::wstring::npos) mtaPath = mtaPath.substr(0, dotPos);
-    mtaPath += L"_mta.json";
+    // Save MTA config (AWSCleaner_mta.json in EXE directory)
+    wchar_t exeDir2[MAX_PATH];
+    GetModuleFileName(NULL, exeDir2, MAX_PATH);
+    std::wstring mtaDir = exeDir2;
+    size_t slashPos = mtaDir.find_last_of(L"\\/");
+    if (slashPos != std::wstring::npos) mtaDir = mtaDir.substr(0, slashPos + 1);
+    std::wstring mtaPath = mtaDir + L"AWSCleaner_mta.json";
     
     std::wofstream mta_file(mtaPath);
     mta_file << L"{\n";
@@ -1010,6 +1023,9 @@ INT_PTR CALLBACK SettingsDlgProc(HWND hwndDlg, UINT uMsg, WPARAM wParam, LPARAM 
                     } else {
                         g_favorites.erase(eng);
                     }
+                    // Auto-save after every checkbox toggle
+                    HWND hMain = GetParent(hwndDlg);
+                    if (hMain) SendMessage(hMain, WM_COMMAND, MAKEWPARAM(ID_BTN_SAVE, BN_CLICKED), 0);
                 }
             }
         }
