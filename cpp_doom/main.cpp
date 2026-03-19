@@ -973,8 +973,10 @@ void RefreshDialogStatus(HWND hwndDlg) {
 }
 
 INT_PTR CALLBACK SettingsDlgProc(HWND hwndDlg, UINT uMsg, WPARAM wParam, LPARAM lParam) {
+    static bool s_isSettingsInitializing = false;
     switch (uMsg) {
     case WM_INITDIALOG: {
+        s_isSettingsInitializing = true;
         ApplySettingsZoom(hwndDlg);
 
         HWND hList = GetDlgItem(hwndDlg, IDC_LIST_RESOURCES);
@@ -1006,6 +1008,7 @@ INT_PTR CALLBACK SettingsDlgProc(HWND hwndDlg, UINT uMsg, WPARAM wParam, LPARAM 
         }
 
         RefreshDialogStatus(hwndDlg);
+        s_isSettingsInitializing = false;
         return (INT_PTR)TRUE;
     }
     case WM_NOTIFY: {
@@ -1024,8 +1027,10 @@ INT_PTR CALLBACK SettingsDlgProc(HWND hwndDlg, UINT uMsg, WPARAM wParam, LPARAM 
                         g_favorites.erase(eng);
                     }
                     // Auto-save after every checkbox toggle
-                    HWND hMain = GetParent(hwndDlg);
-                    if (hMain) SendMessage(hMain, WM_COMMAND, MAKEWPARAM(ID_BTN_SAVE, BN_CLICKED), 0);
+                    if (!s_isSettingsInitializing) {
+                        HWND hMain = GetParent(hwndDlg);
+                        if (hMain) SendMessage(hMain, WM_COMMAND, MAKEWPARAM(ID_BTN_SAVE, BN_CLICKED), 0);
+                    }
                 }
             }
         }
