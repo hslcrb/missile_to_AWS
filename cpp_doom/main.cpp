@@ -50,6 +50,7 @@ std::vector<AWSRegion> g_regions = {
 HWND g_hAccount, g_hAccessKey, g_hSecretKey, g_hLogs, g_hBtnSave, g_hBtnNuke, g_hBtnCancel, g_hChkShowSecret, g_hImeIndicator, g_hCapsIndicator, g_hResourceFilter, g_hSortCombo;
 HWND g_hwndSelectAll = NULL;
 HWND g_hPicLogo = NULL;
+HWND g_hSettingsDlg = NULL;
 #define ID_PIC_LOGO 1005
 #define ID_MENU_COPY_LINK 1006
 std::vector<int> g_filteredIndices; // Indices into g_resourceInfos for the current filter
@@ -974,14 +975,20 @@ INT_PTR CALLBACK SettingsDlgProc(HWND hwndDlg, UINT uMsg, WPARAM wParam, LPARAM 
             return (INT_PTR)TRUE;
         }
         if (LOWORD(wParam) == IDOK || LOWORD(wParam) == IDCANCEL) {
+            SendMessage(hwndDlg, WM_CLOSE, 0, 0);
+            return (INT_PTR)TRUE;
+        }
+        break;
+    case WM_CLOSE:
+        if (g_hSettingsDlg) {
             HWND hwndMain = GetParent(hwndDlg);
             SaveFiles(hwndMain);
             SendMessage(hwndMain, WM_COMMAND, MAKEWPARAM(ID_COMBO_SORT, CBN_SELCHANGE), 0);
             InvalidateRect(hwndMain, NULL, TRUE);
-            EndDialog(hwndDlg, LOWORD(wParam));
-            return (INT_PTR)TRUE;
+            DestroyWindow(hwndDlg);
+            g_hSettingsDlg = NULL;
         }
-        break;
+        return (INT_PTR)TRUE;
     }
     return (INT_PTR)FALSE;
 }
@@ -1478,7 +1485,12 @@ LRESULT CALLBACK WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) 
             ShellExecute(NULL, L"open", L"https://github.com/hslcrb/missile_to_AWS", NULL, NULL, SW_SHOWNORMAL);
         }
         if (id == ID_BTN_SETTINGS && code == BN_CLICKED) {
-            DialogBoxParam(GetModuleHandle(NULL), MAKEINTRESOURCE(IDD_SETTINGS_DIALOG), hwnd, SettingsDlgProc, 0);
+            if (!g_hSettingsDlg) {
+                g_hSettingsDlg = CreateDialogParam(GetModuleHandle(NULL), MAKEINTRESOURCE(IDD_SETTINGS_DIALOG), hwnd, SettingsDlgProc, 0);
+                ShowWindow(g_hSettingsDlg, SW_SHOW);
+            } else {
+                SetForegroundWindow(g_hSettingsDlg);
+            }
         }
         if (id == ID_BTN_SAVE && (code == BN_CLICKED || code == STN_CLICKED)) {
             CreateThread(NULL, 0, SaveFilesAsync, hwnd, 0, NULL);
@@ -1639,8 +1651,12 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine
         }
         
         if (!isHandled) {
-            TranslateMessage(&msg);
-            DispatchMessage(&msg);
+            if (g_hSettingsDlg && IsDialogMessage(g_hSettingsDlg, &msg)) {
+                // Handled by modeless dialog
+            } else {
+                TranslateMessage(&msg);
+                DispatchMessage(&msg);
+            }
         }
         
         // ULTIMATE CURSOR PROTECTION: Force cursor visible after every message
