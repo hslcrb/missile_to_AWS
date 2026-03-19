@@ -87,7 +87,7 @@ void AppendLog(const std::wstring& text);
 // The single source of truth for default priority/favorite resources.
 static const wchar_t* g_defaultFavorites[] = {
     L"EC2Instance", L"EC2VPC", L"IAMUser", L"LambdaFunction",
-    L"RDSInstance", L"S3Bucket", L"ESS", L"CloudFrontDistribution"
+    L"RDSInstance", L"S3Bucket", L"ESDomain", L"CloudFrontDistribution"
 };
 static const int g_numDefaultFavorites = 8;
 
