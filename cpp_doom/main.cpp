@@ -880,6 +880,29 @@ void RunNuke(HWND hwnd) {
     CreateThread(NULL, 0, RunNukeAsync, hwnd, 0, NULL);
 }
 
+HFONT g_hSettingsZoomFont = NULL;
+int g_settingsZoomLevel = 0;
+
+BOOL CALLBACK ZoomEnumChildProc(HWND hwnd, LPARAM lParam) {
+    SendMessage(hwnd, WM_SETFONT, (WPARAM)lParam, TRUE);
+    return TRUE;
+}
+
+void ApplySettingsZoom(HWND hwndDlg) {
+    if (g_hSettingsZoomFont) {
+        DeleteObject(g_hSettingsZoomFont);
+        g_hSettingsZoomFont = NULL;
+    }
+    int baseHeight = 15;
+    int newHeight = baseHeight + g_settingsZoomLevel;
+    if (newHeight < 8) newHeight = 8;
+    if (newHeight > 60) newHeight = 60;
+
+    g_hSettingsZoomFont = CreateFont(newHeight, 0, 0, 0, FW_NORMAL, FALSE, FALSE, FALSE, DEFAULT_CHARSET, OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS, DEFAULT_QUALITY, DEFAULT_PITCH | FF_DONTCARE, L"맑은 고딕");
+    
+    EnumChildWindows(hwndDlg, ZoomEnumChildProc, (LPARAM)g_hSettingsZoomFont);
+}
+
 void RefreshDialogStatus(HWND hwndDlg) {
     std::wstring statusText;
     int missingCount = 0;
@@ -916,6 +939,8 @@ void RefreshDialogStatus(HWND hwndDlg) {
 INT_PTR CALLBACK SettingsDlgProc(HWND hwndDlg, UINT uMsg, WPARAM wParam, LPARAM lParam) {
     switch (uMsg) {
     case WM_INITDIALOG: {
+        ApplySettingsZoom(hwndDlg);
+
         HWND hList = GetDlgItem(hwndDlg, IDC_LIST_RESOURCES);
         ListView_SetExtendedListViewStyle(hList, LVS_EX_CHECKBOXES | LVS_EX_FULLROWSELECT | LVS_EX_GRIDLINES);
         
@@ -1637,10 +1662,27 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine
         if (msg.message == WM_KEYDOWN) {
             bool ctrl = (GetKeyState(VK_CONTROL) & 0x8000) != 0;
             if (ctrl) {
-                if (msg.wParam == 'S') {
-                    SendMessage(hwnd, WM_COMMAND, MAKEWPARAM(ID_BTN_SAVE, BN_CLICKED), 0);
-                    isHandled = true;
-                } else {
+                if (g_hSettingsDlg && (GetForegroundWindow() == g_hSettingsDlg || IsChild(g_hSettingsDlg, GetFocus()))) {
+                    if (msg.wParam == VK_OEM_PLUS || msg.wParam == VK_ADD || msg.wParam == '=' || msg.wParam == '+') {
+                        g_settingsZoomLevel += 2;
+                        ApplySettingsZoom(g_hSettingsDlg);
+                        isHandled = true;
+                    } else if (msg.wParam == VK_OEM_MINUS || msg.wParam == VK_SUBTRACT || msg.wParam == '-') {
+                        g_settingsZoomLevel -= 2;
+                        ApplySettingsZoom(g_hSettingsDlg);
+                        isHandled = true;
+                    } else if (msg.wParam == '0' || msg.wParam == VK_NUMPAD0) {
+                        g_settingsZoomLevel = 0;
+                        ApplySettingsZoom(g_hSettingsDlg);
+                        isHandled = true;
+                    }
+                }
+                
+                if (!isHandled) {
+                    if (msg.wParam == 'S') {
+                        SendMessage(hwnd, WM_COMMAND, MAKEWPARAM(ID_BTN_SAVE, BN_CLICKED), 0);
+                        isHandled = true;
+                    } else {
                     HWND hFocus = GetFocus();
                     if (hFocus) {
                         wchar_t className[256] = {0};
@@ -1664,6 +1706,7 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine
                             }
                         }
                     }
+                }
                 }
             }
         }
