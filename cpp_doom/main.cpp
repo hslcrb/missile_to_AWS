@@ -1286,7 +1286,7 @@ LRESULT CALLBACK WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) 
         SendMessage(g_hCapsIndicator, WM_SETFONT, (WPARAM)g_hFontIndicator, TRUE);
         
         int logsEditY = logsLblY + 25;
-        g_hLogs = CreateWindow(L"EDIT", L"", WS_VISIBLE | WS_CHILD | WS_BORDER | ES_MULTILINE | ES_AUTOVSCROLL | WS_VSCROLL, 20, logsEditY, 550, 280, hwnd, (HMENU)ID_EDIT_LOGS, NULL, NULL);
+        g_hLogs = CreateWindow(L"EDIT", L"", WS_VISIBLE | WS_CHILD | WS_BORDER | ES_MULTILINE | ES_AUTOVSCROLL | WS_VSCROLL, 20, logsEditY, 550, 200, hwnd, (HMENU)ID_EDIT_LOGS, NULL, NULL);
         g_OldEditProc = (WNDPROC)SetWindowLongPtr(g_hLogs, GWLP_WNDPROC, (LONG_PTR)TerminalEditProc);
 
         EnumChildWindows(hwnd, [](HWND child, LPARAM font) -> BOOL {
@@ -1828,7 +1828,7 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine
         }
     }
 
-    HWND hwnd = CreateWindowEx(0, CLASS_NAME, L"AWS Cleaner", WS_OVERLAPPEDWINDOW, CW_USEDEFAULT, CW_USEDEFAULT, 610, 850, NULL, NULL, hInstance, NULL);
+    HWND hwnd = CreateWindowEx(0, CLASS_NAME, L"AWS Cleaner", WS_OVERLAPPEDWINDOW, CW_USEDEFAULT, CW_USEDEFAULT, 610, 750, NULL, NULL, hInstance, NULL);
     if (hwnd == NULL) return 0;
 
     ShowWindow(hwnd, nShowCmd);
