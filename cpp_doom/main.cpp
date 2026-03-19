@@ -965,6 +965,26 @@ INT_PTR CALLBACK SettingsDlgProc(HWND hwndDlg, UINT uMsg, WPARAM wParam, LPARAM 
                 }
             }
         }
+        if (lpnmh->idFrom == IDC_LIST_RESOURCES && lpnmh->code == NM_CUSTOMDRAW) {
+            LPNMLVCUSTOMDRAW lplvcd = (LPNMLVCUSTOMDRAW)lParam;
+            switch(lplvcd->nmcd.dwDrawStage) {
+                case CDDS_PREPAINT:
+                    SetWindowLongPtr(hwndDlg, DWLP_MSGRESULT, CDRF_NOTIFYITEMDRAW);
+                    return (INT_PTR)TRUE;
+                case CDDS_ITEMPREPAINT: {
+                    int idx = (int)lplvcd->nmcd.dwItemSpec;
+                    if (idx >= 0 && idx < g_numResourceTypes) {
+                        if (IsPriorityResource(g_resourceInfos[idx].eng)) {
+                            lplvcd->clrTextBk = RGB(255, 255, 180);
+                        } else {
+                            lplvcd->clrTextBk = GetSysColor(COLOR_WINDOW);
+                        }
+                    }
+                    SetWindowLongPtr(hwndDlg, DWLP_MSGRESULT, CDRF_NEWFONT);
+                    return (INT_PTR)TRUE;
+                }
+            }
+        }
         break;
     }
     case WM_COMMAND:
