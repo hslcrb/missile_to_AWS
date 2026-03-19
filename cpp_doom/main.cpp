@@ -1172,9 +1172,9 @@ LRESULT CALLBACK WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) 
 
         // Header quick-link buttons (right of logo)
         CreateWindow(L"BUTTON", L"", WS_VISIBLE | WS_CHILD | BS_OWNERDRAW,
-            210, 15, 365, 27, hwnd, (HMENU)ID_BTN_ISSUES, NULL, NULL);
+            210, 16, 365, 22, hwnd, (HMENU)ID_BTN_ISSUES, NULL, NULL);
         CreateWindow(L"BUTTON", L"", WS_VISIBLE | WS_CHILD | BS_OWNERDRAW,
-            210, 46, 365, 27, hwnd, (HMENU)ID_BTN_AWS_CONSOLE, NULL, NULL);
+            210, 42, 365, 22, hwnd, (HMENU)ID_BTN_AWS_CONSOLE, NULL, NULL);
 
         int startY = 75; // Adjusted spacing for smaller header
         CreateWindow(L"STATIC", L"Account-ID :", WS_VISIBLE | WS_CHILD, 20, startY, 150, 20, hwnd, NULL, NULL, NULL);
