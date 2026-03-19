@@ -84,12 +84,18 @@ const wchar_t* g_exeMasterHash = L"SHA256_HASH_VALIDATION_TOKEN_XXXXXXXXXXXXXXXX
 void SaveFiles(HWND hwnd);
 void AppendLog(const std::wstring& text);
 
+// The single source of truth for default priority/favorite resources.
+static const wchar_t* g_defaultFavorites[] = {
+    L"EC2Instance", L"EC2VPC", L"IAMUser", L"LambdaFunction",
+    L"RDSInstance", L"S3Bucket", L"ESS", L"CloudFrontDistribution"
+};
+static const int g_numDefaultFavorites = 8;
+
 bool IsPriorityResource(const wchar_t* res) {
     if (!res) return false;
     if (g_favorites.count(res)) return true;
-    static const wchar_t* priorities[] = { L"EC2Instance", L"EC2VPC", L"IAMUser", L"LambdaFunction", L"RDSInstance", L"S3Bucket", L"ESS", L"CloudFrontDistribution" };
-    for (int i = 0; i < 8; ++i) {
-        if (wcscmp(res, priorities[i]) == 0) return true;
+    for (int i = 0; i < g_numDefaultFavorites; ++i) {
+        if (wcscmp(res, g_defaultFavorites[i]) == 0) return true;
     }
     return false;
 }
@@ -320,14 +326,8 @@ void LoadMTAConfig() {
     std::wstring mtaPath = dir + L"AWSCleaner_mta.json";
 
     auto insertDefaults = [&]() {
-        g_favorites.insert(L"EC2Instance");
-        g_favorites.insert(L"EC2VPC");
-        g_favorites.insert(L"IAMUser");
-        g_favorites.insert(L"LambdaFunction");
-        g_favorites.insert(L"RDSInstance");
-        g_favorites.insert(L"S3Bucket");
-        g_favorites.insert(L"ESS");
-        g_favorites.insert(L"CloudFrontDistribution");
+        for (int i = 0; i < g_numDefaultFavorites; ++i)
+            g_favorites.insert(g_defaultFavorites[i]);
     };
 
     std::wifstream f(mtaPath);
@@ -397,10 +397,10 @@ void LoadMTAConfig() {
             }
         }
     }
-    
-    if (!hasFavorites || g_favorites.empty()) {
-        insertDefaults();
-    }
+
+    // Always merge defaults — ensures every required priority resource is
+    // present even if the saved file predates a newer default list.
+    insertDefaults();
 }
 
 
