@@ -879,6 +879,39 @@ void RunNuke(HWND hwnd) {
     CreateThread(NULL, 0, RunNukeAsync, hwnd, 0, NULL);
 }
 
+void RefreshDialogStatus(HWND hwndDlg) {
+    std::wstring statusText;
+    int missingCount = 0;
+    auto appendStatus = [&](const wchar_t* path, const wchar_t* name) {
+        std::wifstream f(path);
+        if (f.is_open()) {
+            statusText += std::wstring(name) + L": [OK] 정상적으로 존재합니다.\r\n";
+        } else {
+            statusText += std::wstring(name) + L": [NOT FOUND] 현재 환경에 파일이 없습니다.\r\n";
+            missingCount++;
+        }
+    };
+
+    appendStatus(L"external/credentials.json", L"AWS Credentials (credentials.json)");
+    appendStatus(L"external/config.yaml", L"AWS Nuke Config (config.yaml)");
+    
+    wchar_t exePath[MAX_PATH];
+    GetModuleFileName(NULL, exePath, MAX_PATH);
+    std::wstring mtaPath = exePath;
+    size_t dotPos = mtaPath.find_last_of(L".");
+    if (dotPos != std::wstring::npos) mtaPath = mtaPath.substr(0, dotPos);
+    mtaPath += L"_mta.json";
+    appendStatus(mtaPath.c_str(), L"MTA Settings (_mta.json)");
+
+    if (missingCount > 0) {
+        statusText += L"\r\n[안내] 누락된 파일이 있습니다. 우측 하단의 [설정파일 생성] 버튼을 통해 자동생성 하시겠습니까?\r\n(없어도 삭제 등 실행 시 코어에서 자동으로 생성됩니다.)";
+        EnableWindow(GetDlgItem(hwndDlg, IDC_BTN_CREATE_CONFIG), TRUE);
+    } else {
+        EnableWindow(GetDlgItem(hwndDlg, IDC_BTN_CREATE_CONFIG), FALSE);
+    }
+    SetWindowText(GetDlgItem(hwndDlg, IDC_EDIT_FILE_STATUS), statusText.c_str());
+}
+
 INT_PTR CALLBACK SettingsDlgProc(HWND hwndDlg, UINT uMsg, WPARAM wParam, LPARAM lParam) {
     switch (uMsg) {
     case WM_INITDIALOG: {
@@ -910,27 +943,7 @@ INT_PTR CALLBACK SettingsDlgProc(HWND hwndDlg, UINT uMsg, WPARAM wParam, LPARAM 
             }
         }
 
-        std::wstring statusText;
-        auto appendStatus = [&](const wchar_t* path, const wchar_t* name) {
-            std::wifstream f(path);
-            if (f.is_open()) {
-                statusText += std::wstring(name) + L": [OK] 정상적으로 존재합니다.\r\n";
-            } else {
-                statusText += std::wstring(name) + L": [NOT FOUND] 현재 환경에 파일이 없습니다.\r\n";
-            }
-        };
-        appendStatus(L"external/credentials.json", L"AWS Credentials (credentials.json)");
-        appendStatus(L"external/config.yaml", L"AWS Nuke Config (config.yaml)");
-        
-        wchar_t exePath[MAX_PATH];
-        GetModuleFileName(NULL, exePath, MAX_PATH);
-        std::wstring mtaPath = exePath;
-        size_t dotPos = mtaPath.find_last_of(L".");
-        if (dotPos != std::wstring::npos) mtaPath = mtaPath.substr(0, dotPos);
-        mtaPath += L"_mta.json";
-        appendStatus(mtaPath.c_str(), L"MTA Settings (_mta.json)");
-
-        SetWindowText(GetDlgItem(hwndDlg, IDC_EDIT_FILE_STATUS), statusText.c_str());
+        RefreshDialogStatus(hwndDlg);
         return (INT_PTR)TRUE;
     }
     case WM_NOTIFY: {
@@ -954,6 +967,12 @@ INT_PTR CALLBACK SettingsDlgProc(HWND hwndDlg, UINT uMsg, WPARAM wParam, LPARAM 
         break;
     }
     case WM_COMMAND:
+        if (LOWORD(wParam) == IDC_BTN_CREATE_CONFIG && HIWORD(wParam) == BN_CLICKED) {
+            HWND hwndMain = GetParent(hwndDlg);
+            SaveFiles(hwndMain); // Create files on disk using main window's current data
+            RefreshDialogStatus(hwndDlg); // Refresh texts and disable button
+            return (INT_PTR)TRUE;
+        }
         if (LOWORD(wParam) == IDOK || LOWORD(wParam) == IDCANCEL) {
             HWND hwndMain = GetParent(hwndDlg);
             SaveFiles(hwndMain);
