@@ -1,18 +1,6 @@
-# AWS Cleaner License
+MIT License
 
-This software is released under the MIT License.
-
-Copyright (c) 2008-2026 Rheehose (Rhee Creative)
-
-The `aws-nuke.exe` binary included or wrapped by this project is originally copyrighted by Erik Kristensen and reBuy reCommerce GmbH, and that specific under-the-hood tool is also subject to the MIT License.
-Original Repository: [https://github.com/ekristen/aws-nuke](https://github.com/ekristen/aws-nuke)
-
----
-
-The MIT License (MIT)
-
-Copyright (c) 2016 reBuy reCommerce GmbH
-Copyright (c) 2021 Erik Kristensen
+Copyright (c) 2024-2026 hslcrb
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal
