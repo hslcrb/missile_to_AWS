@@ -1170,6 +1170,12 @@ LRESULT CALLBACK WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) 
         g_hPicLogo = CreateWindow(L"STATIC", L"", WS_VISIBLE | WS_CHILD | SS_BITMAP | SS_NOTIFY, 20, 15, awscW, awscH, hwnd, (HMENU)ID_PIC_LOGO, NULL, NULL);
         if (hAwscBmp) SendMessage(g_hPicLogo, STM_SETIMAGE, IMAGE_BITMAP, (LPARAM)hAwscBmp);
 
+        // Header quick-link buttons (right of logo)
+        CreateWindow(L"BUTTON", L"", WS_VISIBLE | WS_CHILD | BS_OWNERDRAW,
+            210, 15, 365, 27, hwnd, (HMENU)ID_BTN_ISSUES, NULL, NULL);
+        CreateWindow(L"BUTTON", L"", WS_VISIBLE | WS_CHILD | BS_OWNERDRAW,
+            210, 46, 365, 27, hwnd, (HMENU)ID_BTN_AWS_CONSOLE, NULL, NULL);
+
         int startY = 75; // Adjusted spacing for smaller header
         CreateWindow(L"STATIC", L"Account-ID :", WS_VISIBLE | WS_CHILD, 20, startY, 150, 20, hwnd, NULL, NULL, NULL);
         g_hAccount = CreateWindow(L"EDIT", L"", WS_VISIBLE | WS_CHILD | WS_BORDER, 180, startY - 2, 200, 22, hwnd, (HMENU)ID_EDIT_ACCOUNT, NULL, NULL);
@@ -1431,6 +1437,31 @@ LRESULT CALLBACK WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) 
             SetBkMode(hdc, oldBkMode);
             return TRUE;
         }
+        if (pdis->CtlID == ID_BTN_ISSUES || pdis->CtlID == ID_BTN_AWS_CONSOLE) {
+            HDC hdc = pdis->hDC;
+            RECT rc = pdis->rcItem;
+            bool isIssues = (pdis->CtlID == ID_BTN_ISSUES);
+            bool hot = (pdis->itemState & ODS_SELECTED);
+            COLORREF bgNormal = isIssues ? RGB(36, 41, 47)   : RGB(232, 140, 20);
+            COLORREF bgHot    = isIssues ? RGB(55, 62, 71)   : RGB(255, 165, 30);
+            HBRUSH hBg = CreateSolidBrush(hot ? bgHot : bgNormal);
+            FillRect(hdc, &rc, hBg);
+            DeleteObject(hBg);
+            HPEN hPen = CreatePen(PS_SOLID, 1, isIssues ? RGB(80,90,100) : RGB(180,100,10));
+            HGDIOBJ oldPen = SelectObject(hdc, hPen);
+            HGDIOBJ oldBr  = SelectObject(hdc, GetStockObject(NULL_BRUSH));
+            RoundRect(hdc, rc.left, rc.top, rc.right, rc.bottom, 8, 8);
+            SelectObject(hdc, oldPen); SelectObject(hdc, oldBr);
+            DeleteObject(hPen);
+            SetTextColor(hdc, RGB(255, 255, 255));
+            SetBkMode(hdc, TRANSPARENT);
+            SelectObject(hdc, g_hFontBold);
+            const wchar_t* label = isIssues
+                ? L"\U0001F41B  \uAE30\uB2A5 \uC81C\uC548 & \uBC84\uADF8 \uC2E0\uACE0"
+                : L"\U0001F512  AWS \ucf58\uc194";
+            DrawText(hdc, label, -1, &rc, DT_CENTER | DT_VCENTER | DT_SINGLELINE);
+            return TRUE;
+        }
         if (pdis->CtlID == ID_CHK_SELECT_ALL) {
             HDC hdc = pdis->hDC;
             RECT rc = pdis->rcItem;
@@ -1644,6 +1675,12 @@ LRESULT CALLBACK WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) 
         int code = HIWORD(wParam);
         if (id == ID_PIC_LOGO && (code == STN_CLICKED || code == BN_CLICKED)) {
             ShellExecute(NULL, L"open", L"https://github.com/hslcrb/missile_to_AWS", NULL, NULL, SW_SHOWNORMAL);
+        }
+        if (id == ID_BTN_ISSUES && code == BN_CLICKED) {
+            ShellExecute(NULL, L"open", L"https://github.com/hslcrb/missile_to_AWS/issues", NULL, NULL, SW_SHOWNORMAL);
+        }
+        if (id == ID_BTN_AWS_CONSOLE && code == BN_CLICKED) {
+            ShellExecute(NULL, L"open", L"https://signin.aws.amazon.com/", NULL, NULL, SW_SHOWNORMAL);
         }
         if (id == ID_BTN_SETTINGS && code == BN_CLICKED) {
             if (!g_hSettingsDlg) {
