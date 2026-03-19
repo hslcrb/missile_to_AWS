@@ -398,7 +398,7 @@ void LoadMTAConfig() {
         }
     }
     
-    if (!hasFavorites) {
+    if (!hasFavorites || g_favorites.empty()) {
         insertDefaults();
     }
 }
@@ -1019,15 +1019,15 @@ INT_PTR CALLBACK SettingsDlgProc(HWND hwndDlg, UINT uMsg, WPARAM wParam, LPARAM 
                 UINT oldState = pnmv->uOldState & LVIS_STATEIMAGEMASK;
                 UINT newState = pnmv->uNewState & LVIS_STATEIMAGEMASK;
                 if (oldState != newState) {
-                    bool isChecked = (newState == INDEXTOSTATEIMAGEMASK(2));
-                    std::wstring eng = g_resourceInfos[pnmv->iItem].eng;
-                    if (isChecked) {
-                        g_favorites.insert(eng);
-                    } else {
-                        g_favorites.erase(eng);
-                    }
-                    // Auto-save after every checkbox toggle
                     if (!s_isSettingsInitializing) {
+                        bool isChecked = (newState == INDEXTOSTATEIMAGEMASK(2));
+                        std::wstring eng = g_resourceInfos[pnmv->iItem].eng;
+                        if (isChecked) {
+                            g_favorites.insert(eng);
+                        } else {
+                            g_favorites.erase(eng);
+                        }
+                        // Auto-save after every checkbox toggle
                         HWND hMain = GetParent(hwndDlg);
                         if (hMain) SendMessage(hMain, WM_COMMAND, MAKEWPARAM(ID_BTN_SAVE, BN_CLICKED), 0);
                     }
