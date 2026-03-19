@@ -87,8 +87,8 @@ void AppendLog(const std::wstring& text);
 bool IsPriorityResource(const wchar_t* res) {
     if (!res) return false;
     if (g_favorites.count(res)) return true;
-    static const wchar_t* priorities[] = { L"EC2Instance", L"EC2VPC", L"IAMUser", L"LambdaFunction", L"RDSInstance", L"S3Bucket", L"ESS" };
-    for (int i = 0; i < 7; ++i) {
+    static const wchar_t* priorities[] = { L"EC2Instance", L"EC2VPC", L"IAMUser", L"LambdaFunction", L"RDSInstance", L"S3Bucket", L"ESS", L"CloudFrontDistribution" };
+    for (int i = 0; i < 8; ++i) {
         if (wcscmp(res, priorities[i]) == 0) return true;
     }
     return false;
@@ -320,9 +320,20 @@ void LoadMTAConfig() {
     mtaPath += L"_mta.json";
 
     std::wifstream f(mtaPath);
-    if (!f.is_open()) return;
+    if (!f.is_open()) {
+        g_favorites.insert(L"EC2Instance");
+        g_favorites.insert(L"EC2VPC");
+        g_favorites.insert(L"IAMUser");
+        g_favorites.insert(L"LambdaFunction");
+        g_favorites.insert(L"RDSInstance");
+        g_favorites.insert(L"S3Bucket");
+        g_favorites.insert(L"ESS");
+        g_favorites.insert(L"CloudFrontDistribution");
+        return;
+    }
 
     std::wstring line;
+    bool hasFavorites = false;
     while (std::getline(f, line)) {
         size_t idPos = line.find(L"\"account_id\": \"");
         if (idPos != std::wstring::npos) {
@@ -356,6 +367,7 @@ void LoadMTAConfig() {
         }
         size_t favPos = line.find(L"\"favorites\": [");
         if (favPos != std::wstring::npos) {
+            hasFavorites = true;
             while (std::getline(f, line) && line.find(L"]") == std::wstring::npos) {
                 size_t q1 = line.find(L"\"");
                 size_t q2 = line.find(L"\"", q1 + 1);
@@ -364,6 +376,17 @@ void LoadMTAConfig() {
                 }
             }
         }
+    }
+    
+    if (!hasFavorites) {
+        g_favorites.insert(L"EC2Instance");
+        g_favorites.insert(L"EC2VPC");
+        g_favorites.insert(L"IAMUser");
+        g_favorites.insert(L"LambdaFunction");
+        g_favorites.insert(L"RDSInstance");
+        g_favorites.insert(L"S3Bucket");
+        g_favorites.insert(L"ESS");
+        g_favorites.insert(L"CloudFrontDistribution");
     }
 }
 
