@@ -1361,16 +1361,14 @@ LRESULT CALLBACK WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) 
             int boxSize = 34;
             RECT box = { rc.left + (bw - boxSize) / 2, rc.top + 15, rc.left + (bw - boxSize) / 2 + boxSize, rc.top + 15 + boxSize };
             
-            HBRUSH hWhiteBrush = (HBRUSH)GetStockObject(WHITE_BRUSH);
-            HPEN hWhitePen = CreatePen(PS_SOLID, 2, RGB(255, 255, 255));
-            HGDIOBJ oldPen = SelectObject(hdc, hWhitePen);
-            HGDIOBJ oldBrush = SelectObject(hdc, hWhiteBrush);
-
-            Ellipse(hdc, box.left + 5, box.top + 5, box.right - 5, box.bottom - 5);
-
-            SelectObject(hdc, oldPen);
-            SelectObject(hdc, oldBrush);
-            DeleteObject(hWhitePen);
+            HFONT hFontSet = CreateFont(22, 9, 0, 0, FW_HEAVY, FALSE, FALSE, FALSE, DEFAULT_CHARSET, OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS, DEFAULT_QUALITY, DEFAULT_PITCH | FF_DONTCARE, L"Arial");
+            HGDIOBJ oldFont = SelectObject(hdc, hFontSet);
+            SetTextColor(hdc, RGB(255, 255, 255));
+            SetBkMode(hdc, TRANSPARENT);
+            RECT iconBox = { box.left, box.top + 6, box.right, box.bottom };
+            DrawText(hdc, L"SET", -1, &iconBox, DT_CENTER | DT_TOP | DT_SINGLELINE);
+            SelectObject(hdc, oldFont);
+            DeleteObject(hFontSet);
 
             SetTextColor(hdc, RGB(255, 255, 255));
             SetBkMode(hdc, TRANSPARENT);
