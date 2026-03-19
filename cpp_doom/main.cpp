@@ -1365,8 +1365,8 @@ LRESULT CALLBACK WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) 
             HGDIOBJ oldFont = SelectObject(hdc, hFontSet);
             SetTextColor(hdc, RGB(255, 255, 255));
             SetBkMode(hdc, TRANSPARENT);
-            RECT iconBox = { box.left, box.top + 6, box.right, box.bottom };
-            DrawText(hdc, L"SET", -1, &iconBox, DT_CENTER | DT_TOP | DT_SINGLELINE);
+            RECT iconBox = { rc.left, box.top + 6, rc.right, box.bottom };
+            DrawText(hdc, L"SET", -1, &iconBox, DT_CENTER | DT_TOP | DT_SINGLELINE | DT_NOCLIP);
             SelectObject(hdc, oldFont);
             DeleteObject(hFontSet);
 
@@ -1374,7 +1374,7 @@ LRESULT CALLBACK WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) 
             SetBkMode(hdc, TRANSPARENT);
             SelectObject(hdc, g_hFontHuge);
             RECT trSet = { rc.left, box.bottom + 15, rc.right, rc.bottom };
-            DrawText(hdc, L"설정", -1, &trSet, DT_CENTER | DT_TOP);
+            DrawText(hdc, L"설정", -1, &trSet, DT_CENTER | DT_TOP | DT_SINGLELINE | DT_NOCLIP);
 
             return TRUE;
         }
