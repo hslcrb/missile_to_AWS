@@ -1390,8 +1390,12 @@ LRESULT CALLBACK WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) 
         DRAWITEMSTRUCT* pdis = (DRAWITEMSTRUCT*)lParam;
         if (pdis->CtlID == ID_COMBO_RESOURCE) {
             if ((int)pdis->itemID < 0) return TRUE;
-            // Guard against stale itemID while g_filteredIndices is being rebuilt during filtering
-            if (pdis->itemID >= g_filteredIndices.size()) return TRUE;
+            // Guard: if indices were just rebuilt, itemID may be temporarily stale.
+            // Fill with window background to avoid the gray artifact, then bail.
+            if (pdis->itemID >= g_filteredIndices.size()) {
+                FillRect(pdis->hDC, &pdis->rcItem, (HBRUSH)(COLOR_WINDOW + 1));
+                return TRUE;
+            }
             HDC hdc = pdis->hDC;
             RECT rc = pdis->rcItem;
 
@@ -1750,7 +1754,10 @@ LRESULT CALLBACK WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) 
             g_isDirty = true; g_dirtyCooldownTicks = 1;
         }
         if (id == ID_COMBO_RESOURCE && code == CBN_SELCHANGE) {
-            g_isDirty = true; g_dirtyCooldownTicks = 1;
+            // User picked an item: save after a longer debounce (5 s) so we do NOT
+            // trigger an immediate CB_RESETCONTENT / re-filter while the dropdown
+            // is still transitioning — that is what causes the blank gray item.
+            g_isDirty = true; g_dirtyCooldownTicks = 50; // 5-second debounce
         }
         if (id == ID_COMBO_RESOURCE && code == CBN_EDITCHANGE) {
             if (g_isFiltering || g_isIMEComposing || g_isArrowNav) {
