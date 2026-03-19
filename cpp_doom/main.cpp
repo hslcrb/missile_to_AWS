@@ -69,6 +69,7 @@ bool g_isWorking = false;
 // Dirty-flag: set whenever any setting changes; timer debounces the file write
 bool g_isDirty = false;
 int  g_dirtyCooldownTicks = 0; // each tick = 100 ms
+bool g_isLoadingConfig = false; // true while LoadMTAConfig runs — prevents EN_CHANGE from marking dirty
 HFONT g_hFontBold = NULL, g_hFontPrefix = NULL, g_hFontIndicator = NULL, g_hFontHuge = NULL, g_hFontNorm = NULL;
 HANDLE g_hFontRes = NULL;
 HBRUSH g_hBrushNavy = NULL, g_hBrushRed = NULL, g_hBrushPureRed = NULL, g_hBrushYellow = NULL, g_hBrushPastelYellow = NULL;
@@ -332,6 +333,7 @@ void FilterResourceList(const std::wstring& search) {
 }
 
 void LoadMTAConfig() {
+    g_isLoadingConfig = true; // suppress EN_CHANGE dirty-marking while we restore state
     wchar_t exeDir[MAX_PATH];
     GetModuleFileName(NULL, exeDir, MAX_PATH);
     std::wstring dir = exeDir;
@@ -442,6 +444,7 @@ void LoadMTAConfig() {
     // Always merge defaults — ensures every required priority resource is
     // present even if the saved file predates a newer default list.
     insertDefaults();
+    g_isLoadingConfig = false; // done restoring — future changes are user-driven
 }
 
 
@@ -910,9 +913,11 @@ DWORD WINAPI SaveFilesAsync(LPVOID lpParam) {
     HWND hwnd = (HWND)lpParam;
     g_isWorking = true;
     SaveFiles(hwnd);
-    g_isWorking = false;
-    PostMessage(hwnd, WM_SETCURSOR, (WPARAM)hwnd, HTCLIENT); // Refresh cursor
+    // Log BEFORE clearing g_isWorking so the timer cannot start another save
+    // while this thread is still active
     AppendLog(L"[INFO] 설정이 external/ 및 _mta.json에 성공적으로 저장되었습니다.\r\n");
+    g_isWorking = false;
+    PostMessage(hwnd, WM_SETCURSOR, (WPARAM)hwnd, HTCLIENT);
     return 0;
 }
 
@@ -1688,7 +1693,10 @@ LRESULT CALLBACK WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) 
         }
         if (id == ID_CHK_SHOW_SECRET && code != BN_CLICKED) {} // handled above
         // Real-time save triggers for credential/UI changes
-        if ((id == ID_EDIT_ACCOUNT || id == ID_EDIT_ACCESS_KEY || id == ID_EDIT_SECRET_KEY) && code == EN_CHANGE) {
+        // Guard: skip during initial config load to prevent startup save loops
+        if (!g_isLoadingConfig &&
+            (id == ID_EDIT_ACCOUNT || id == ID_EDIT_ACCESS_KEY || id == ID_EDIT_SECRET_KEY) &&
+            code == EN_CHANGE) {
             g_isDirty = true; g_dirtyCooldownTicks = 20; // 2-second debounce
         }
         if (id == ID_CHK_SHOW_SECRET && code == BN_CLICKED) {
