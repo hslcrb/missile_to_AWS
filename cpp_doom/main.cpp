@@ -1603,8 +1603,45 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine
 
     MSG msg = {};
     while (GetMessage(&msg, NULL, 0, 0)) {
-        TranslateMessage(&msg);
-        DispatchMessage(&msg);
+        bool isHandled = false;
+        if (msg.message == WM_KEYDOWN) {
+            bool ctrl = (GetKeyState(VK_CONTROL) & 0x8000) != 0;
+            if (ctrl) {
+                if (msg.wParam == 'S') {
+                    SendMessage(hwnd, WM_COMMAND, MAKEWPARAM(ID_BTN_SAVE, BN_CLICKED), 0);
+                    isHandled = true;
+                } else {
+                    HWND hFocus = GetFocus();
+                    if (hFocus) {
+                        wchar_t className[256] = {0};
+                        GetClassName(hFocus, className, 256);
+                        if (wcscmp(className, L"Edit") == 0) {
+                            if (msg.wParam == 'A') {
+                                SendMessage(hFocus, EM_SETSEL, 0, -1);
+                                isHandled = true;
+                            } else if (msg.wParam == 'Z') {
+                                SendMessage(hFocus, EM_UNDO, 0, 0);
+                                isHandled = true;
+                            } else if (msg.wParam == 'X') {
+                                SendMessage(hFocus, WM_CUT, 0, 0);
+                                isHandled = true;
+                            } else if (msg.wParam == 'C') {
+                                SendMessage(hFocus, WM_COPY, 0, 0);
+                                isHandled = true;
+                            } else if (msg.wParam == 'V') {
+                                SendMessage(hFocus, WM_PASTE, 0, 0);
+                                isHandled = true;
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        
+        if (!isHandled) {
+            TranslateMessage(&msg);
+            DispatchMessage(&msg);
+        }
         
         // ULTIMATE CURSOR PROTECTION: Force cursor visible after every message
         CURSORINFO ci = { sizeof(CURSORINFO) };
