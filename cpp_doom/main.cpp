@@ -879,6 +879,94 @@ void RunNuke(HWND hwnd) {
     CreateThread(NULL, 0, RunNukeAsync, hwnd, 0, NULL);
 }
 
+INT_PTR CALLBACK SettingsDlgProc(HWND hwndDlg, UINT uMsg, WPARAM wParam, LPARAM lParam) {
+    switch (uMsg) {
+    case WM_INITDIALOG: {
+        HWND hList = GetDlgItem(hwndDlg, IDC_LIST_RESOURCES);
+        ListView_SetExtendedListViewStyle(hList, LVS_EX_CHECKBOXES | LVS_EX_FULLROWSELECT | LVS_EX_GRIDLINES);
+        
+        LVCOLUMN lvc = {0};
+        lvc.mask = LVCF_TEXT | LVCF_WIDTH | LVCF_SUBITEM;
+        
+        lvc.iSubItem = 0; lvc.cx = 70; lvc.pszText = (LPWSTR)L"즐겨찾기"; ListView_InsertColumn(hList, 0, &lvc);
+        lvc.iSubItem = 1; lvc.cx = 120; lvc.pszText = (LPWSTR)L"영어 이름"; ListView_InsertColumn(hList, 1, &lvc);
+        lvc.iSubItem = 2; lvc.cx = 100; lvc.pszText = (LPWSTR)L"한글 이름"; ListView_InsertColumn(hList, 2, &lvc);
+        lvc.iSubItem = 3; lvc.cx = 130; lvc.pszText = (LPWSTR)L"태그";      ListView_InsertColumn(hList, 3, &lvc);
+
+        for (int i = 0; i < g_numResourceTypes; ++i) {
+            LVITEM lvi = {0};
+            lvi.mask = LVIF_TEXT;
+            lvi.iItem = i;
+            lvi.iSubItem = 0;
+            lvi.pszText = (LPWSTR)L"";
+            ListView_InsertItem(hList, &lvi);
+            
+            ListView_SetItemText(hList, i, 1, (LPWSTR)g_resourceInfos[i].eng);
+            ListView_SetItemText(hList, i, 2, (LPWSTR)g_resourceInfos[i].kor);
+            ListView_SetItemText(hList, i, 3, (LPWSTR)g_resourceInfos[i].tags);
+
+            if (g_favorites.count(g_resourceInfos[i].eng) > 0) {
+                ListView_SetCheckState(hList, i, TRUE);
+            }
+        }
+
+        std::wstring statusText;
+        auto appendStatus = [&](const wchar_t* path, const wchar_t* name) {
+            std::wifstream f(path);
+            if (f.is_open()) {
+                statusText += std::wstring(name) + L": [OK] 정상적으로 존재합니다.\r\n";
+            } else {
+                statusText += std::wstring(name) + L": [NOT FOUND] 현재 환경에 파일이 없습니다.\r\n";
+            }
+        };
+        appendStatus(L"external/credentials.json", L"AWS Credentials (credentials.json)");
+        appendStatus(L"external/config.yaml", L"AWS Nuke Config (config.yaml)");
+        
+        wchar_t exePath[MAX_PATH];
+        GetModuleFileName(NULL, exePath, MAX_PATH);
+        std::wstring mtaPath = exePath;
+        size_t dotPos = mtaPath.find_last_of(L".");
+        if (dotPos != std::wstring::npos) mtaPath = mtaPath.substr(0, dotPos);
+        mtaPath += L"_mta.json";
+        appendStatus(mtaPath.c_str(), L"MTA Settings (_mta.json)");
+
+        SetWindowText(GetDlgItem(hwndDlg, IDC_EDIT_FILE_STATUS), statusText.c_str());
+        return (INT_PTR)TRUE;
+    }
+    case WM_NOTIFY: {
+        LPNMHDR lpnmh = (LPNMHDR)lParam;
+        if (lpnmh->idFrom == IDC_LIST_RESOURCES && lpnmh->code == LVN_ITEMCHANGED) {
+            LPNMLISTVIEW pnmv = (LPNMLISTVIEW)lParam;
+            if ((pnmv->uChanged & LVIF_STATE) && pnmv->iItem >= 0 && pnmv->iItem < g_numResourceTypes) {
+                UINT oldState = pnmv->uOldState & LVIS_STATEIMAGEMASK;
+                UINT newState = pnmv->uNewState & LVIS_STATEIMAGEMASK;
+                if (oldState != newState) {
+                    bool isChecked = (newState == INDEXTOSTATEIMAGEMASK(2));
+                    std::wstring eng = g_resourceInfos[pnmv->iItem].eng;
+                    if (isChecked) {
+                        g_favorites.insert(eng);
+                    } else {
+                        g_favorites.erase(eng);
+                    }
+                }
+            }
+        }
+        break;
+    }
+    case WM_COMMAND:
+        if (LOWORD(wParam) == IDOK || LOWORD(wParam) == IDCANCEL) {
+            HWND hwndMain = GetParent(hwndDlg);
+            SaveFiles(hwndMain);
+            SendMessage(hwndMain, WM_COMMAND, MAKEWPARAM(ID_COMBO_SORT, CBN_SELCHANGE), 0);
+            InvalidateRect(hwndMain, NULL, TRUE);
+            EndDialog(hwndDlg, LOWORD(wParam));
+            return (INT_PTR)TRUE;
+        }
+        break;
+    }
+    return (INT_PTR)FALSE;
+}
+
 LRESULT CALLBACK WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) {
     switch (uMsg) {
     case WM_ERASEBKGND: {
@@ -953,6 +1041,7 @@ LRESULT CALLBACK WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) 
         CreateWindow(L"BUTTON", L"리소스를 삭제할 리전을 선택해주세요", WS_VISIBLE | WS_CHILD | BS_GROUPBOX, 15, groupY, 560, groupH, hwnd, NULL, NULL, NULL);
 
         g_hwndSelectAll = CreateWindow(L"BUTTON", L"", WS_VISIBLE | WS_CHILD | BS_OWNERDRAW | BS_MULTILINE, 425, groupY + 30, 65, 140, hwnd, (HMENU)ID_CHK_SELECT_ALL, NULL, NULL);
+        CreateWindow(L"BUTTON", L"", WS_VISIBLE | WS_CHILD | BS_OWNERDRAW | BS_MULTILINE, 495, groupY + 30, 65, 140, hwnd, (HMENU)ID_BTN_SETTINGS, NULL, NULL);
 
         int columns = 3;
         int itemsPerColumn = (int)((g_regions.size() + columns - 1) / columns);
@@ -1204,6 +1293,47 @@ LRESULT CALLBACK WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) 
 
             return TRUE;
         }
+        if (pdis->CtlID == ID_BTN_SETTINGS) {
+            HDC hdc = pdis->hDC;
+            RECT rc = pdis->rcItem;
+            int bw = rc.right - rc.left;
+
+            FillRect(hdc, &rc, g_hBrushPastelYellow);
+
+            HBRUSH hBlackBrush = CreateSolidBrush(RGB(30, 30, 30));
+            HPEN hBlackPenBg = CreatePen(PS_SOLID, 1, RGB(0, 0, 0));
+            HGDIOBJ oldPenBg = SelectObject(hdc, hBlackPenBg);
+            HGDIOBJ oldBrushBg = SelectObject(hdc, hBlackBrush);
+            
+            RoundRect(hdc, rc.left, rc.top, rc.right, rc.bottom, 20, 20);
+            
+            SelectObject(hdc, oldPenBg);
+            SelectObject(hdc, oldBrushBg);
+            DeleteObject(hBlackBrush);
+            DeleteObject(hBlackPenBg);
+
+            int boxSize = 34;
+            RECT box = { rc.left + (bw - boxSize) / 2, rc.top + 15, rc.left + (bw - boxSize) / 2 + boxSize, rc.top + 15 + boxSize };
+            
+            HBRUSH hWhiteBrush = (HBRUSH)GetStockObject(WHITE_BRUSH);
+            HPEN hWhitePen = CreatePen(PS_SOLID, 2, RGB(255, 255, 255));
+            HGDIOBJ oldPen = SelectObject(hdc, hWhitePen);
+            HGDIOBJ oldBrush = SelectObject(hdc, hWhiteBrush);
+
+            Ellipse(hdc, box.left + 5, box.top + 5, box.right - 5, box.bottom - 5);
+
+            SelectObject(hdc, oldPen);
+            SelectObject(hdc, oldBrush);
+            DeleteObject(hWhitePen);
+
+            SetTextColor(hdc, RGB(255, 255, 255));
+            SetBkMode(hdc, TRANSPARENT);
+            SelectObject(hdc, g_hFontHuge);
+            RECT trSet = { rc.left, box.bottom + 15, rc.right, rc.bottom };
+            DrawText(hdc, L"설정", -1, &trSet, DT_CENTER | DT_TOP);
+
+            return TRUE;
+        }
         if (pdis->CtlID == ID_BTN_CANCEL) {
             HDC hdc = pdis->hDC;
             RECT rc = pdis->rcItem;
@@ -1328,6 +1458,9 @@ LRESULT CALLBACK WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) 
         if (id == ID_PIC_LOGO && (code == STN_CLICKED || code == BN_CLICKED)) {
             ShellExecute(NULL, L"open", L"https://github.com/hslcrb/missile_to_AWS", NULL, NULL, SW_SHOWNORMAL);
         }
+        if (id == ID_BTN_SETTINGS && code == BN_CLICKED) {
+            DialogBoxParam(GetModuleHandle(NULL), MAKEINTRESOURCE(IDD_SETTINGS_DIALOG), hwnd, SettingsDlgProc, 0);
+        }
         if (id == ID_BTN_SAVE && (code == BN_CLICKED || code == STN_CLICKED)) {
             CreateThread(NULL, 0, SaveFilesAsync, hwnd, 0, NULL);
         }
@@ -1413,6 +1546,11 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine
     GdiplusStartupInput gdiplusStartupInput;
     ULONG_PTR gdiplusToken;
     GdiplusStartup(&gdiplusToken, &gdiplusStartupInput, NULL);
+
+    INITCOMMONCONTROLSEX icex;
+    icex.dwSize = sizeof(INITCOMMONCONTROLSEX);
+    icex.dwICC = ICC_LISTVIEW_CLASSES;
+    InitCommonControlsEx(&icex);
 
     const wchar_t CLASS_NAME[] = L"AWSCleanerWindowClass";
     WNDCLASSEX wc = {};

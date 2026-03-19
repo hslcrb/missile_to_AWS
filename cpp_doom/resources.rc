@@ -1,3 +1,4 @@
+#include <windows.h>
 #include "resource.h"
 IDI_ICON1 ICON "assets/AWSCleanerlogobasic_outline.ico"
 IDB_SAVE_PNG RCDATA "assets/save_button.png"
@@ -21,3 +22,14 @@ IDR_DATA_013 RCDATA "data/data.013"
 IDR_DATA_014 RCDATA "data/data.014"
 
 IDR_FONT_NOTO RCDATA "assets/Noto_Sans_KR/static/NotoSansKR-Regular.ttf"
+
+IDD_SETTINGS_DIALOG DIALOGEX 0, 0, 450, 300
+STYLE DS_SETFONT | DS_MODALFRAME | DS_FIXEDSYS | WS_POPUP | WS_CAPTION | WS_SYSMENU
+CAPTION "설정"
+FONT 9, "MS Shell Dlg", 400, 0, 0x1
+BEGIN
+    DEFPUSHBUTTON   "닫기",IDOK,393,279,50,14
+    CONTROL         "",IDC_LIST_RESOURCES,"SysListView32",LVS_REPORT | LVS_ALIGNLEFT | WS_BORDER | WS_TABSTOP,7,7,436,200
+    LTEXT           "설정 파일 상태:",IDC_STATIC,7,215,100,8
+    EDITTEXT        IDC_EDIT_FILE_STATUS,7,225,436,50,ES_MULTILINE | ES_AUTOVSCROLL | ES_READONLY | WS_VSCROLL
+END
