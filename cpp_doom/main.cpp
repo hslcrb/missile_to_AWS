@@ -1378,7 +1378,9 @@ LRESULT CALLBACK WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) 
                 if (--g_dirtyCooldownTicks == 0) {
                     g_isDirty = false;
                     if (!g_isWorking) {
-                        HANDLE hThread = CreateThread(NULL, 0, SaveFilesAsync, hwnd, 0, NULL);
+                        MTAConfigData* pData = new MTAConfigData(GetCurrentConfigData());
+                        pData->hwnd = hwnd;
+                        HANDLE hThread = CreateThread(NULL, 0, SaveFilesAsync, pData, 0, NULL);
                         if (hThread) CloseHandle(hThread);
                     }
                 }
@@ -1752,7 +1754,10 @@ LRESULT CALLBACK WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) 
             }
         }
         if (id == ID_BTN_SAVE && (code == BN_CLICKED || code == STN_CLICKED)) {
-            CreateThread(NULL, 0, SaveFilesAsync, hwnd, 0, NULL);
+            MTAConfigData* pData = new MTAConfigData(GetCurrentConfigData());
+            pData->hwnd = hwnd;
+            HANDLE hThread = CreateThread(NULL, 0, SaveFilesAsync, pData, 0, NULL);
+            if (hThread) CloseHandle(hThread);
         }
         if (id == ID_BTN_NUKE && (code == BN_CLICKED || code == STN_CLICKED)) {
             if (g_nukeCountdown == 0) {
