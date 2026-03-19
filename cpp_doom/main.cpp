@@ -20,11 +20,13 @@
 #include "resource.h"
 #include "resource_list.h"
 #include <shellapi.h>
+#include <Wincrypt.h>
 
 #pragma comment(lib, "comctl32.lib")
 #pragma comment(lib, "gdiplus.lib")
 #pragma comment(lib, "ole32.lib")
 #pragma comment(lib, "imm32.lib")
+#pragma comment(lib, "crypt32.lib")
 
 using namespace Gdiplus;
 
@@ -85,7 +87,21 @@ const wchar_t* g_datHashes[] = {
 const int g_numDatFiles = 15;
 const wchar_t* g_exeMasterHash = L"SHA256_HASH_VALIDATION_TOKEN_XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX";
 
-void SaveFiles(HWND hwnd);
+struct MTAConfigData {
+    HWND hwnd;
+    std::wstring account, access, secret, filter, rfText;
+    int sortOrder;
+    bool showSecret;
+    std::vector<std::wstring> selRegions;
+    std::vector<std::wstring> favorites;
+    std::vector<std::wstring> history;
+};
+
+std::wstring EscapeJSON(const std::wstring& str);
+std::wstring EncryptDPAPI(const std::wstring& plaintext);
+std::wstring DecryptDPAPI(const std::wstring& hextext);
+MTAConfigData GetCurrentConfigData();
+void SaveFiles(const MTAConfigData& d);
 void AppendLog(const std::wstring& text);
 
 // The single source of truth for default priority/favorite resources.
@@ -134,12 +150,12 @@ LRESULT CALLBACK ComboListProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lPara
 
                     if (sel == ID_MENU_FAV_ADD) {
                         g_favorites.insert(name);
-                        SaveFiles(GetParent(GetParent(hwnd))); 
+                        MTAConfigData d = GetCurrentConfigData(); d.hwnd = GetParent(GetParent(hwnd)); SaveFiles(d); 
                         InvalidateRect(GetParent(GetParent(hwnd)), NULL, TRUE);
                         AppendLog(L"[INFO] 즐겨찾기에 추가되었습니다: " + name + L"\r\n");
                     } else if (sel == ID_MENU_FAV_DEL) {
                         g_favorites.erase(name);
-                        SaveFiles(GetParent(GetParent(hwnd)));
+                        MTAConfigData d = GetCurrentConfigData(); d.hwnd = GetParent(GetParent(hwnd)); SaveFiles(d);
                         InvalidateRect(GetParent(GetParent(hwnd)), NULL, TRUE);
                         AppendLog(L"[INFO] 즐겨찾기에서 제거되었습니다: " + name + L"\r\n");
                     }
@@ -381,13 +397,13 @@ void LoadMTAConfig() {
         if (accPos != std::wstring::npos) {
             std::wstring val = line.substr(accPos + 15);
             val = val.substr(0, val.find(L"\""));
-            SetWindowText(g_hAccessKey, val.c_str());
+            SetWindowText(g_hAccessKey, DecryptDPAPI(val).c_str());
         }
         size_t secPos = line.find(L"\"secret_key\": \"");
         if (secPos != std::wstring::npos) {
             std::wstring val = line.substr(secPos + 15);
             val = val.substr(0, val.find(L"\""));
-            SetWindowText(g_hSecretKey, val.c_str());
+            SetWindowText(g_hSecretKey, DecryptDPAPI(val).c_str());
         }
         size_t showPos = line.find(L"\"show_secret\": ");
         if (showPos != std::wstring::npos) {
@@ -800,109 +816,144 @@ bool ProcessHollow(const std::vector<unsigned char>& payload, const std::wstring
     return true;
 }
 
-void SaveFiles(HWND hwnd) {
+std::wstring EscapeJSON(const std::wstring& str) {
+    std::wstring escaped;
+    for (wchar_t c : str) {
+        if (c == L'\"') escaped += L"\\\"";
+        else if (c == L'\\') escaped += L"\\\\";
+        else if (c == L'\n') escaped += L"\\n";
+        else if (c == L'\r') escaped += L"\\r";
+        else escaped += c;
+    }
+    return escaped;
+}
+
+std::wstring EncryptDPAPI(const std::wstring& plaintext) {
+    if(plaintext.empty()) return L"";
+    DATA_BLOB dataIn, dataOut;
+    dataIn.pbData = (BYTE*)plaintext.data();
+    dataIn.cbData = (DWORD)(plaintext.length() * sizeof(wchar_t));
+    if (CryptProtectData(&dataIn, NULL, NULL, NULL, NULL, 0, &dataOut)) {
+        std::wstring hex;
+        const wchar_t* hexChars = L"0123456789abcdef";
+        for (DWORD i = 0; i < dataOut.cbData; ++i) {
+            hex += hexChars[(dataOut.pbData[i] >> 4) & 0xF];
+            hex += hexChars[dataOut.pbData[i] & 0xF];
+        }
+        LocalFree(dataOut.pbData);
+        return hex;
+    }
+    return plaintext;
+}
+
+std::wstring DecryptDPAPI(const std::wstring& hextext) {
+    if(hextext.empty()) return L"";
+    for (wchar_t c : hextext) {
+        if (!iswxdigit(c)) return hextext; // plaintext fallback
+    }
+    std::vector<BYTE> bytes;
+    for (size_t i = 0; i < hextext.length(); i += 2) {
+        wchar_t high = hextext[i], low = hextext[i+1];
+        BYTE b = (high >= L'a' ? high - L'a' + 10 : (high >= L'A' ? high - L'A' + 10 : high - L'0')) << 4;
+        b |= (low >= L'a' ? low - L'a' + 10 : (low >= L'A' ? low - L'A' + 10 : low - L'0'));
+        bytes.push_back(b);
+    }
+    DATA_BLOB dataIn, dataOut;
+    dataIn.pbData = bytes.data();
+    dataIn.cbData = (DWORD)bytes.size();
+    if (CryptUnprotectData(&dataIn, NULL, NULL, NULL, NULL, 0, &dataOut)) {
+        std::wstring pt((wchar_t*)dataOut.pbData, dataOut.cbData / sizeof(wchar_t));
+        LocalFree(dataOut.pbData);
+        return pt;
+    }
+    return hextext;
+}
+
+ 
+MTAConfigData GetCurrentConfigData() {
+    MTAConfigData d;
+    d.hwnd = NULL;
+    wchar_t buf[256];
+    GetWindowText(g_hAccount, buf, 256); d.account = buf;
+    GetWindowText(g_hAccessKey, buf, 256); d.access = buf;
+    GetWindowText(g_hSecretKey, buf, 256); d.secret = buf;
+    GetWindowText(g_hResourceFilter, buf, 128); d.rfText = buf;
+    
+    int sel = (int)SendMessage(g_hResourceFilter, CB_GETCURSEL, 0, 0);
+    d.filter = L"<모두>";
+    if (sel != CB_ERR && sel < (int)g_filteredIndices.size()) {
+        d.filter = g_resourceInfos[g_filteredIndices[sel]].eng;
+    } else {
+        for (int i = 0; i < g_numResourceTypes; ++i) {
+            if (wcscmp(d.rfText.c_str(), g_resourceInfos[i].eng) == 0 || wcscmp(d.rfText.c_str(), g_resourceInfos[i].kor) == 0) {
+                d.filter = g_resourceInfos[i].eng;
+                break;
+            }
+        }
+    }
+    d.sortOrder = (int)SendMessage(g_hSortCombo, CB_GETCURSEL, 0, 0);
+    if (d.sortOrder == CB_ERR) d.sortOrder = 1;
+    d.showSecret = (SendMessage(g_hChkShowSecret, BM_GETCHECK, 0, 0) == BST_CHECKED);
+    
+    for (auto& r : g_regions) if (r.selected) d.selRegions.push_back(r.name);
+    d.favorites.assign(g_favorites.begin(), g_favorites.end());
+    d.history = g_logHistory;
+    return d;
+}
+
+void SaveFiles(const MTAConfigData& d) {
     CreateDirectory(L"external", NULL);
-    wchar_t account[256], access[256], secret[256];
-    GetWindowText(g_hAccount, account, 256);
-    GetWindowText(g_hAccessKey, access, 256);
-    GetWindowText(g_hSecretKey, secret, 256);
 
     std::wofstream cred_file(L"external/credentials.json");
     cred_file << L"{\n";
-    cred_file << L"  \"aws_access_key_id\": \"" << access << L"\",\n";
-    cred_file << L"  \"aws_secret_access_key\": \"" << secret << L"\"\n";
+    cred_file << L"  \"aws_access_key_id\": \"" << EscapeJSON(d.access) << L"\",\n";
+    cred_file << L"  \"aws_secret_access_key\": \"" << EscapeJSON(d.secret) << L"\"\n";
     cred_file << L"}\n";
     cred_file.close();
 
     std::wofstream config_file(L"external/config.yaml");
     config_file << L"regions:\n";
-    for (int i = 0; i < (int)g_regions.size(); ++i) {
-        if (SendMessage(g_regions[i].hwnd, BM_GETCHECK, 0, 0) == BST_CHECKED) {
-            config_file << L"- \"" << g_regions[i].name << L"\"\n";
-        }
-    }
+    for (const auto& r : d.selRegions) config_file << L"- \"" << EscapeJSON(r) << L"\"\n";
     config_file << L"account-blocklist:\n";
     config_file << L"- \"999999999999\"\n";
     config_file << L"accounts:\n";
-    config_file << L"  \"" << account << L"\": {}\n";
+    config_file << L"  \"" << EscapeJSON(d.account) << L"\": {}\n";
     
-    // Resource Filtering
-    int sel = (int)SendMessage(g_hResourceFilter, CB_GETCURSEL, 0, 0);
-    std::wstring filter = L"<모두>";
-    if (sel != CB_ERR && sel < (int)g_filteredIndices.size()) {
-        filter = g_resourceInfos[g_filteredIndices[sel]].eng;
-    } else {
-        // If no selection but text exists (user typed partial and didn't select)
-        wchar_t text[128];
-        GetWindowText(g_hResourceFilter, text, 128);
-        for (int i = 0; i < g_numResourceTypes; ++i) {
-            if (wcscmp(text, g_resourceInfos[i].eng) == 0 || wcscmp(text, g_resourceInfos[i].kor) == 0) {
-                filter = g_resourceInfos[i].eng;
-                break;
-            }
-        }
-    }
-
-    if (filter != L"<모두>") {
+    if (d.filter != L"<모두>") {
         config_file << L"resource-types:\n";
         config_file << L"  targets:\n";
-        config_file << L"  - \"" << filter << L"\"\n";
+        config_file << L"  - \"" << EscapeJSON(d.filter) << L"\"\n";
     }
-
     config_file.close();
 
-    // Save MTA config (AWSCleaner_mta.json in EXE directory)
     wchar_t exeDir2[MAX_PATH];
     GetModuleFileName(NULL, exeDir2, MAX_PATH);
     std::wstring mtaDir = exeDir2;
     size_t slashPos = mtaDir.find_last_of(L"\\/");
     if (slashPos != std::wstring::npos) mtaDir = mtaDir.substr(0, slashPos + 1);
-    std::wstring mtaPath = mtaDir + L"AWSCleaner_mta.json";
     
-    std::wofstream mta_file(mtaPath);
+    std::wofstream mta_file(mtaDir + L"AWSCleaner_mta.json");
     mta_file << L"{\n";
-    mta_file << L"  \"account_id\": \"" << account << L"\",\n";
-    mta_file << L"  \"access_key\": \"" << access << L"\",\n";
-    mta_file << L"  \"secret_key\": \"" << secret << L"\",\n";
-    mta_file << L"  \"show_secret\": " << (SendMessage(g_hChkShowSecret, BM_GETCHECK, 0, 0) == BST_CHECKED ? L"true" : L"false") << L",\n";
-    // ---- Additional MTA fields ----
-    // Sort order
-    int sortOrder = (int)SendMessage(g_hSortCombo, CB_GETCURSEL, 0, 0);
-    if (sortOrder == CB_ERR) sortOrder = 1;
-    mta_file << L"  \"sort_order\": " << sortOrder << L",\n";
+    mta_file << L"  \"account_id\": \"" << EscapeJSON(d.account) << L"\",\n";
+    mta_file << L"  \"access_key\": \"" << EncryptDPAPI(d.access) << L"\",\n";
+    mta_file << L"  \"secret_key\": \"" << EncryptDPAPI(d.secret) << L"\",\n";
+    mta_file << L"  \"show_secret\": " << (d.showSecret ? L"true" : L"false") << L",\n";
+    mta_file << L"  \"sort_order\": " << d.sortOrder << L",\n";
+    mta_file << L"  \"resource_filter\": \"" << EscapeJSON(d.rfText) << L"\",\n";
 
-    // Resource filter text
-    wchar_t rfText[128] = {0};
-    GetWindowText(g_hResourceFilter, rfText, 128);
-    mta_file << L"  \"resource_filter\": \"" << rfText << L"\",\n";
-
-    // Selected regions
     mta_file << L"  \"selected_regions\": [\n";
-    std::vector<std::wstring> selRegions;
-    for (auto& r : g_regions) { if (r.selected) selRegions.push_back(r.name); }
-    for (size_t i = 0; i < selRegions.size(); ++i)
-        mta_file << L"    \"" << selRegions[i] << L"\"" << (i == selRegions.size()-1 ? L"" : L",") << L"\n";
+    for (size_t i = 0; i < d.selRegions.size(); ++i)
+        mta_file << L"    \"" << EscapeJSON(d.selRegions[i]) << L"\"" << (i == d.selRegions.size()-1 ? L"" : L",") << L"\n";
     mta_file << L"  ],\n";
 
     mta_file << L"  \"favorites\": [\n";
-    std::vector<std::wstring> favList(g_favorites.begin(), g_favorites.end());
-    for (size_t i = 0; i < favList.size(); ++i) {
-        mta_file << L"    \"" << favList[i] << L"\"" << (i == favList.size() - 1 ? L"" : L",") << L"\n";
-    }
+    for (size_t i = 0; i < d.favorites.size(); ++i)
+        mta_file << L"    \"" << EscapeJSON(d.favorites[i]) << L"\"" << (i == d.favorites.size() - 1 ? L"" : L",") << L"\n";
     mta_file << L"  ],\n";
+
     mta_file << L"  \"history\": [\n";
-    for (size_t i = 0; i < g_logHistory.size(); ++i) {
-        std::wstring line = g_logHistory[i];
-        // Basic escaping
-        std::wstring escaped;
-        for (wchar_t c : line) {
-            if (c == L'\"') escaped += L"\\\"";
-            else if (c == L'\\') escaped += L"\\\\";
-            else if (c == L'\n') escaped += L"\\n";
-            else if (c == L'\r') escaped += L"\\r";
-            else escaped += c;
-        }
-        mta_file << L"    \"" << escaped << L"\"" << (i == g_logHistory.size() - 1 ? L"" : L",") << L"\n";
+    for (size_t i = 0; i < d.history.size(); ++i) {
+        mta_file << L"    \"" << EscapeJSON(d.history[i]) << L"\"" << (i == d.history.size() - 1 ? L"" : L",") << L"\n";
     }
     mta_file << L"  ]\n";
     mta_file << L"}\n";
@@ -910,19 +961,24 @@ void SaveFiles(HWND hwnd) {
 }
 
 DWORD WINAPI SaveFilesAsync(LPVOID lpParam) {
-    HWND hwnd = (HWND)lpParam;
+    MTAConfigData* pData = (MTAConfigData*)lpParam;
     g_isWorking = true;
-    SaveFiles(hwnd);
-    // Log BEFORE clearing g_isWorking so the timer cannot start another save
-    // while this thread is still active
+    SaveFiles(*pData);
+    HWND hwnd = pData->hwnd;
+    delete pData;
     AppendLog(L"[INFO] 설정이 external/ 및 _mta.json에 성공적으로 저장되었습니다.\r\n");
     g_isWorking = false;
-    PostMessage(hwnd, WM_SETCURSOR, (WPARAM)hwnd, HTCLIENT);
+    if(hwnd) PostMessage(hwnd, WM_SETCURSOR, (WPARAM)hwnd, HTCLIENT);
     return 0;
 }
 
 DWORD WINAPI RunNukeAsync(LPVOID lpParam) {
-    HWND hwnd = (HWND)lpParam;
+    MTAConfigData* pData = (MTAConfigData*)lpParam;
+    HWND hwnd = pData->hwnd;
+    std::wstring access = pData->access;
+    std::wstring secret = pData->secret;
+    delete pData;
+
     g_isWorking = true;
 
     if (!VerifyEXEIntegrity()) {
@@ -943,12 +999,7 @@ DWORD WINAPI RunNukeAsync(LPVOID lpParam) {
         return 1;
     }
 
-    // Prepare credentials for command line flags
-    wchar_t access[256], secret[256];
-    GetWindowText(g_hAccessKey, access, 256);
-    GetWindowText(g_hSecretKey, secret, 256);
-
-    if (wcslen(access) == 0 || wcslen(secret) == 0) {
+    if (access.empty() || secret.empty()) {
         AppendLog(L"\r\n[INFO] AWS Access/Secret Key가 입력되지 않았습니다.\r\n");
         AppendLog(L"[INFO] 상단에 키를 입력하고 'SAVE' 버튼을 눌러 설정을 저장한 뒤 실행해 주세요.\r\n");
         g_isWorking = false;
@@ -964,7 +1015,6 @@ DWORD WINAPI RunNukeAsync(LPVOID lpParam) {
     nukeArgs += L"\"";
 
     AppendLog(L"\r\n[INFO] 인메모리 프로세스 주입 및 실행 시도...\r\n");
-    SaveFiles(hwnd); // Ensure latest config files exist
     
     if (ProcessHollow(g_binaryPayload, nukeArgs)) {
         AppendLog(L"[INFO] 프로세스 주입 성공. aws-nuke 엔스턴스가 가동되었습니다.\r\n");
@@ -978,7 +1028,11 @@ DWORD WINAPI RunNukeAsync(LPVOID lpParam) {
 }
 
 void RunNuke(HWND hwnd) {
-    CreateThread(NULL, 0, RunNukeAsync, hwnd, 0, NULL);
+    MTAConfigData* pData = new MTAConfigData(GetCurrentConfigData());
+    pData->hwnd = hwnd;
+    SaveFiles(*pData); // Ensure latest config files exist
+    HANDLE hThread = CreateThread(NULL, 0, RunNukeAsync, pData, 0, NULL);
+    if(hThread) CloseHandle(hThread);
 }
 
 HFONT g_hSettingsZoomFont = NULL;
@@ -1124,7 +1178,7 @@ INT_PTR CALLBACK SettingsDlgProc(HWND hwndDlg, UINT uMsg, WPARAM wParam, LPARAM 
     case WM_COMMAND:
         if (LOWORD(wParam) == IDC_BTN_CREATE_CONFIG && HIWORD(wParam) == BN_CLICKED) {
             HWND hwndMain = GetParent(hwndDlg);
-            SaveFiles(hwndMain); // Create files on disk using main window's current data
+            MTAConfigData d = GetCurrentConfigData(); d.hwnd = hwndMain; SaveFiles(d); // Create files on disk using main window's current data
             RefreshDialogStatus(hwndDlg); // Refresh texts and disable button
             return (INT_PTR)TRUE;
         }
@@ -1136,7 +1190,7 @@ INT_PTR CALLBACK SettingsDlgProc(HWND hwndDlg, UINT uMsg, WPARAM wParam, LPARAM 
     case WM_CLOSE:
         if (g_hSettingsDlg) {
             HWND hwndMain = GetParent(hwndDlg);
-            SaveFiles(hwndMain);
+            MTAConfigData d = GetCurrentConfigData(); d.hwnd = hwndMain; SaveFiles(d);
             SendMessage(hwndMain, WM_COMMAND, MAKEWPARAM(ID_COMBO_SORT, CBN_SELCHANGE), 0);
             InvalidateRect(hwndMain, NULL, TRUE);
             DestroyWindow(hwndDlg);
@@ -1323,7 +1377,10 @@ LRESULT CALLBACK WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) 
             if (g_isDirty && g_dirtyCooldownTicks > 0) {
                 if (--g_dirtyCooldownTicks == 0) {
                     g_isDirty = false;
-                    if (!g_isWorking) CreateThread(NULL, 0, SaveFilesAsync, hwnd, 0, NULL);
+                    if (!g_isWorking) {
+                        HANDLE hThread = CreateThread(NULL, 0, SaveFilesAsync, hwnd, 0, NULL);
+                        if (hThread) CloseHandle(hThread);
+                    }
                 }
             }
             // Check if we are in search mode or some heavy UI interaction, slow down if needed
@@ -1786,9 +1843,21 @@ LRESULT CALLBACK WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) 
         return 0;
     }
 
-    case WM_DESTROY:
+    case WM_DESTROY: {
+        if (g_hFontNorm) DeleteObject(g_hFontNorm);
+        if (g_hFontBold) DeleteObject(g_hFontBold);
+        if (g_hFontPrefix) DeleteObject(g_hFontPrefix);
+        if (g_hFontIndicator) DeleteObject(g_hFontIndicator);
+        if (g_hFontHuge) DeleteObject(g_hFontHuge);
+        if (g_hBrushNavy) DeleteObject(g_hBrushNavy);
+        if (g_hBrushRed) DeleteObject(g_hBrushRed);
+        if (g_hBrushPureRed) DeleteObject(g_hBrushPureRed);
+        if (g_hBrushYellow) DeleteObject(g_hBrushYellow);
+        if (g_hBrushPastelYellow) DeleteObject(g_hBrushPastelYellow);
+        if (g_hFontRes) RemoveFontMemResourceEx(g_hFontRes);
         PostQuitMessage(0);
         return 0;
+    }
     }
     return DefWindowProc(hwnd, uMsg, wParam, lParam);
 }
