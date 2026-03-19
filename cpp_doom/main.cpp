@@ -110,7 +110,9 @@ LRESULT CALLBACK ComboListProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lPara
             int idx = (int)SendMessage(hwnd, LB_ITEMFROMPOINT, 0, lParam);
             if (HIWORD(idx) == 0) {
                 int itemIdx = LOWORD(idx);
-                if (itemIdx >= 0 && itemIdx < (int)g_filteredIndices.size()) {
+                    // Capture size once to guard against concurrent modification during filtering
+                    int filteredSize = (int)g_filteredIndices.size();
+                    if (itemIdx >= 0 && itemIdx < filteredSize) {
                     int realIdx = g_filteredIndices[itemIdx];
                     std::wstring name = g_resourceInfos[realIdx].eng;
                     bool isFav = g_favorites.count(name) > 0;
@@ -248,7 +250,16 @@ void FilterResourceList(const std::wstring& search) {
     }
 
     if (keywords.empty()) {
-        for (int i = 0; i < g_numResourceTypes; ++i) g_filteredIndices.push_back(i);
+        // Favorites / priority resources always appear at the very top (yellow rows)
+        for (int i = 0; i < g_numResourceTypes; ++i) {
+            if (IsPriorityResource(g_resourceInfos[i].eng))
+                g_filteredIndices.push_back(i);
+        }
+        // Remaining resources in their original (alphabetical) order
+        for (int i = 0; i < g_numResourceTypes; ++i) {
+            if (!IsPriorityResource(g_resourceInfos[i].eng))
+                g_filteredIndices.push_back(i);
+        }
         return;
     }
 
@@ -1312,9 +1323,11 @@ LRESULT CALLBACK WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) 
         DRAWITEMSTRUCT* pdis = (DRAWITEMSTRUCT*)lParam;
         if (pdis->CtlID == ID_COMBO_RESOURCE) {
             if ((int)pdis->itemID < 0) return TRUE;
+            // Guard against stale itemID while g_filteredIndices is being rebuilt during filtering
+            if (pdis->itemID >= g_filteredIndices.size()) return TRUE;
             HDC hdc = pdis->hDC;
             RECT rc = pdis->rcItem;
-            
+
             int realIdx = g_filteredIndices[pdis->itemID];
             const wchar_t* eng = g_resourceInfos[realIdx].eng;
             const wchar_t* kor = g_resourceInfos[realIdx].kor;
