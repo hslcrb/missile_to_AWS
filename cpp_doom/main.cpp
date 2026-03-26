@@ -76,6 +76,15 @@ HFONT g_hFontBold = NULL, g_hFontPrefix = NULL, g_hFontIndicator = NULL, g_hFont
 HANDLE g_hFontRes = NULL;
 HBRUSH g_hBrushNavy = NULL, g_hBrushRed = NULL, g_hBrushPureRed = NULL, g_hBrushYellow = NULL, g_hBrushPastelYellow = NULL;
 int g_protectedTerminalLength = 0;
+// Progress & activity indicator
+HWND g_hProgressBar = NULL;
+HWND g_hSpinnerLabel = NULL;
+int g_spinnerFrame = 0;
+static const wchar_t* g_spinnerFrames[] = { L"⠋", L"⠙", L"⠹", L"⠸", L"⠼", L"⠴", L"⠦", L"⠧", L"⠇", L"⠏" };
+std::wstring g_nukeLog; // accumulator for multi-pass detection
+bool g_nukeMultiPassPending = false; // true if a second pass is needed
+int g_nukeProgressTotal = 0;   // estimated total resources from 'would remove' scan
+int g_nukeProgressDone  = 0;   // counted from 'Removing' log lines
 std::vector<std::wstring> g_logHistory;
 std::set<std::wstring> g_favorites;
 WNDPROC g_OldComboListProc = NULL;
@@ -687,9 +696,30 @@ DWORD WINAPI ReadPipeThread(LPVOID lpParam) {
             if(c == L'\n') finalMsg += L"\r\n";
             else finalMsg += c;
         }
-        
-        // This is safe because SendMessage is thread-safe for many things, but better to use a dedicated buffer
         AppendLog(finalMsg);
+
+        // --- Progress parsing ---
+        // Accumulate entire log for multi-pass detection
+        g_nukeLog += wmsg;
+
+        // Count 'would remove' lines to estimate total (dry-run phase)
+        size_t pos = 0;
+        while ((pos = wmsg.find(L"would remove", pos)) != std::wstring::npos) {
+            ++g_nukeProgressTotal;
+            ++pos;
+        }
+        // Count 'Removing' lines for done count
+        pos = 0;
+        while ((pos = wmsg.find(L"Removing ", pos)) != std::wstring::npos) {
+            ++g_nukeProgressDone;
+            ++pos;
+        }
+        // Check for dependency error keywords -> flag multi-pass
+        if (wmsg.find(L"DependencyViolation") != std::wstring::npos ||
+            wmsg.find(L"dependency violation") != std::wstring::npos ||
+            wmsg.find(L"cannot delete") != std::wstring::npos) {
+            g_nukeMultiPassPending = true;
+        }
     }
     CloseHandle(hPipe);
     return 0;
@@ -1032,7 +1062,9 @@ void RunNuke(HWND hwnd) {
     pData->hwnd = hwnd;
     SaveFiles(*pData); // Ensure latest config files exist
     HANDLE hThread = CreateThread(NULL, 0, RunNukeAsync, pData, 0, NULL);
-    if(hThread) CloseHandle(hThread);
+    if (hThread) CloseHandle(hThread);
+    // Start spinner/progress timer
+    SetTimer(hwnd, 3, 200, NULL);
 }
 
 HFONT g_hSettingsZoomFont = NULL;
@@ -1338,8 +1370,20 @@ LRESULT CALLBACK WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) 
         g_hCapsIndicator = CreateWindow(L"STATIC", L"[CAPS]", WS_VISIBLE | WS_CHILD | SS_CENTER, 190, logsLblY, 60, 20, hwnd, (HMENU)ID_INDICATOR_CAPS, NULL, NULL);
         SendMessage(g_hImeIndicator, WM_SETFONT, (WPARAM)g_hFontIndicator, TRUE);
         SendMessage(g_hCapsIndicator, WM_SETFONT, (WPARAM)g_hFontIndicator, TRUE);
-        
-        int logsEditY = logsLblY + 25;
+
+        // --- Progress Section (above terminal) ---
+        int progressBarY = logsLblY + 28;
+        g_hProgressBar = CreateWindowEx(0, PROGRESS_CLASS, NULL,
+            WS_CHILD | PBS_SMOOTH | PBS_MARQUEE, // hidden by default
+            20, progressBarY, 480, 14, hwnd, NULL, NULL, NULL);
+        SendMessage(g_hProgressBar, PBM_SETRANGE, 0, MAKELPARAM(0, 100));
+        SendMessage(g_hProgressBar, PBM_SETPOS, 0, 0);
+
+        g_hSpinnerLabel = CreateWindow(L"STATIC", L"",
+            WS_CHILD | SS_CENTER,
+            504, progressBarY - 1, 60, 16, hwnd, NULL, NULL, NULL);
+
+        int logsEditY = progressBarY + 20;
         g_hLogs = CreateWindow(L"EDIT", L"", WS_VISIBLE | WS_CHILD | WS_BORDER | ES_MULTILINE | ES_AUTOVSCROLL | WS_VSCROLL, 20, logsEditY, 550, 200, hwnd, (HMENU)ID_EDIT_LOGS, NULL, NULL);
         g_OldEditProc = (WNDPROC)SetWindowLongPtr(g_hLogs, GWLP_WNDPROC, (LONG_PTR)TerminalEditProc);
 
@@ -1353,6 +1397,7 @@ LRESULT CALLBACK WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) 
         CreateHiddenCmd();
 
         SetTimer(hwnd, 1, 100, NULL);
+        // Timer 3 starts only when nuke fires; set up handle here so WM_TIMER case 3 is ready
 
         return 0;
     }
@@ -1367,8 +1412,91 @@ LRESULT CALLBACK WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) 
                     SendMessage(g_hBtnNuke, STM_SETIMAGE, IMAGE_BITMAP, (LPARAM)g_hNukeBmpFull);
                     EnableWindow(g_hBtnCancel, FALSE);
                     InvalidateRect(g_hBtnCancel, NULL, TRUE);
+
+                    // --- Long-delay warning for slow resources ---
+                    wchar_t filterText[256] = {};
+                    GetWindowText(g_hResourceFilter, filterText, 256);
+                    std::wstring filterStr(filterText);
+                    bool hasSlowResource = false;
+                    const wchar_t* slowResources[] = { L"KMS", L"CloudFront", L"S3", L"S3Bucket" };
+                    for (auto* sr : slowResources) {
+                        if (filterStr.find(sr) != std::wstring::npos || filterStr.empty()) {
+                            hasSlowResource = true; break;
+                        }
+                    }
+                    if (hasSlowResource) {
+                        MessageBox(hwnd,
+                            L"선택된 리소스 중 일부(KMS, CloudFront, S3 등)는\n"
+                            L"AWS의 특성상 즉시 삭제되지 않고 '비활성화' 상태로\n"
+                            L"전환된 뒤 10분~수 시간 후에 완전히 제거됩니다.\n\n"
+                            L"터미널에 출력이 멈추더라도 백그라운드에서 정상\n"
+                            L"실행 중이니 프로그램을 종료하지 마세요.",
+                            L"⚠️ 장시간 소요 알림",
+                            MB_OK | MB_ICONINFORMATION);
+                    }
+
+                    // Reset progress tracking
+                    g_nukeLog.clear();
+                    g_nukeProgressTotal = 0;
+                    g_nukeProgressDone  = 0;
+                    g_nukeMultiPassPending = false;
+                    if (g_hProgressBar) {
+                        SendMessage(g_hProgressBar, PBM_SETPOS, 0, 0);
+                        ShowWindow(g_hProgressBar, SW_SHOW);
+                    }
+                    if (g_hSpinnerLabel) ShowWindow(g_hSpinnerLabel, SW_SHOW);
+
                     AppendLog(L"[Cleaner] 삭제 명령을 실행합니다!\r\n");
                     RunNuke(hwnd);
+                }
+            }
+        }
+        // Timer 3: spinner animation and progress bar update while g_isWorking
+        if (wParam == 3) {
+            if (g_isWorking) {
+                // Animate spinner
+                g_spinnerFrame = (g_spinnerFrame + 1) % 10;
+                if (g_hSpinnerLabel) {
+                    std::wstring spinText = std::wstring(g_spinnerFrames[g_spinnerFrame]) + L" 작업중";
+                    SetWindowText(g_hSpinnerLabel, spinText.c_str());
+                }
+                // Update progress bar
+                if (g_hProgressBar && g_nukeProgressTotal > 0) {
+                    int pct = (int)((double)g_nukeProgressDone / g_nukeProgressTotal * 100.0);
+                    if (pct > 100) pct = 100;
+                    SendMessage(g_hProgressBar, PBM_SETPOS, pct, 0);
+                }
+            } else {
+                // Work finished — hide spinner, show 100% then hide
+                KillTimer(hwnd, 3);
+                if (g_hSpinnerLabel) {
+                    SetWindowText(g_hSpinnerLabel, L"✔ 완료");
+                    SetTimer(hwnd, 4, 3000, NULL); // hide after 3s
+                }
+                if (g_hProgressBar) {
+                    SendMessage(g_hProgressBar, PBM_SETPOS, 100, 0);
+                }
+                // Multi-pass: if dependency errors found, fire again
+                if (g_nukeMultiPassPending) {
+                    g_nukeMultiPassPending = false;
+                    AppendLog(L"[Cleaner] 의존성 오류가 감지되었습니다. 2차 삭제를 자동 실행합니다...\r\n");
+                    g_nukeLog.clear();
+                    g_nukeProgressDone = 0;
+                    ShowWindow(g_hProgressBar, SW_SHOW);
+                    ShowWindow(g_hSpinnerLabel, SW_SHOW);
+                    RunNuke(hwnd);
+                    SetTimer(hwnd, 3, 200, NULL);
+                }
+            }
+        }
+        // Timer 4: clean up progress UI after delay
+        if (wParam == 4) {
+            KillTimer(hwnd, 4);
+            if (!g_isWorking) {
+                if (g_hProgressBar) ShowWindow(g_hProgressBar, SW_HIDE);
+                if (g_hSpinnerLabel) {
+                    SetWindowText(g_hSpinnerLabel, L"");
+                    ShowWindow(g_hSpinnerLabel, SW_HIDE);
                 }
             }
         }
