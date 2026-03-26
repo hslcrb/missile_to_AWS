@@ -7,4 +7,13 @@
 *.exe
 *.res
 *.obj
-data/
+cpp_doom/data/
+cpp_doom/external/
+cpp_doom/AWSCleaner_mta.json
+cpp_doom/fav.txt
+cpp_doom/out.txt
+cpp_doom/build_output.txt
+cpp_doom/RCa*
+cpp_doom/*.exe
+cpp_doom/*.obj
+cpp_doom/*.res
