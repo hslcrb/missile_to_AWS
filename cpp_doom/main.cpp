@@ -33,7 +33,13 @@ using namespace Gdiplus;
 // NT API types
 typedef NTSTATUS(NTAPI* pNtUnmapViewOfSection)(HANDLE, PVOID);
 
-#include "resource.h"
+// Convenience factory for CreateFont — avoids 24-param repetition
+inline HFONT MakeFont(int size, int weight = FW_NORMAL, const wchar_t* face = L"Noto Sans KR") {
+    return CreateFont(size, 0, 0, 0, weight, FALSE, FALSE, FALSE,
+        DEFAULT_CHARSET, OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS,
+        DEFAULT_QUALITY, DEFAULT_PITCH | FF_DONTCARE, face);
+}
+
 
 typedef struct {
     std::wstring name;
@@ -1248,7 +1254,7 @@ LRESULT CALLBACK WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) 
         return 1;
     }
     case WM_CREATE: {
-        g_hFontNorm = CreateFont(18, 0, 0, 0, FW_NORMAL, FALSE, FALSE, FALSE, DEFAULT_CHARSET, OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS, DEFAULT_QUALITY, DEFAULT_PITCH | FF_DONTCARE, L"Noto Sans KR");
+        g_hFontNorm = MakeFont(18);
 
         int awscH;
         int awscW = 180; // Slightly smaller as requested
@@ -1296,10 +1302,11 @@ LRESULT CALLBACK WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) 
             g_OldComboListProc = (WNDPROC)SetWindowLongPtr(cbi.hwndList, GWLP_WNDPROC, (LONG_PTR)ComboListProc);
         }
 
-        g_hFontBold = CreateFont(18, 0, 0, 0, FW_BOLD, FALSE, FALSE, FALSE, DEFAULT_CHARSET, OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS, DEFAULT_QUALITY, DEFAULT_PITCH | FF_DONTCARE, L"Noto Sans KR");
-        g_hFontPrefix = CreateFont(22, 0, 0, 0, FW_BOLD, FALSE, FALSE, FALSE, DEFAULT_CHARSET, OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS, DEFAULT_QUALITY, DEFAULT_PITCH | FF_DONTCARE, L"Noto Sans KR");
-        g_hFontIndicator = CreateFont(16, 0, 0, 0, FW_BOLD, FALSE, FALSE, FALSE, DEFAULT_CHARSET, OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS, DEFAULT_QUALITY, DEFAULT_PITCH | FF_DONTCARE, L"Noto Sans KR");
-        g_hFontHuge = CreateFont(28, 0, 0, 0, FW_BOLD, FALSE, FALSE, FALSE, DEFAULT_CHARSET, OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS, DEFAULT_QUALITY, DEFAULT_PITCH | FF_DONTCARE, L"Noto Sans KR");
+        g_hFontNorm      = MakeFont(18);
+        g_hFontBold      = MakeFont(18, FW_BOLD);
+        g_hFontPrefix    = MakeFont(22, FW_BOLD);
+        g_hFontIndicator = MakeFont(16, FW_BOLD);
+        g_hFontHuge      = MakeFont(28, FW_BOLD);
 
         g_hBrushNavy = CreateSolidBrush(RGB(0, 0, 128));
         g_hBrushRed = CreateSolidBrush(RGB(139, 0, 0));
@@ -1513,30 +1520,26 @@ LRESULT CALLBACK WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) 
                     }
                 }
             }
-            // Check if we are in search mode or some heavy UI interaction, slow down if needed
+            // IME check (skip if ComboBox edit is focused — avoid flicker during typing)
             HWND focused = GetFocus();
-            if (focused == g_hResourceFilter || GetParent(focused) == g_hResourceFilter) {
-                // Focused on ComboBox Edit box, reduce timer frequency logic or skip Invalidate
-            } else {
-                // IME check
+            bool comboFocused = (focused == g_hResourceFilter || GetParent(focused) == g_hResourceFilter);
+            if (!comboFocused) {
                 HIMC hImc = ImmGetContext(hwnd);
                 DWORD dwConv, dwSent;
                 bool isKorean = false;
                 if (hImc) {
-                    if (ImmGetConversionStatus(hImc, &dwConv, &dwSent)) {
+                    if (ImmGetConversionStatus(hImc, &dwConv, &dwSent))
                         isKorean = (dwConv & IME_CMODE_NATIVE);
-                    }
                     ImmReleaseContext(hwnd, hImc);
                 }
                 SetWindowText(g_hImeIndicator, isKorean ? L"[한]" : L"[A]");
 
-                // CapsLock check
                 bool capsOn = (GetKeyState(VK_CAPITAL) & 0x0001) != 0;
                 ShowWindow(g_hCapsIndicator, capsOn ? SW_SHOW : SW_HIDE);
-
                 InvalidateRect(g_hImeIndicator, NULL, TRUE);
                 InvalidateRect(g_hCapsIndicator, NULL, TRUE);
             }
+
         }
         break;
     }
@@ -1726,7 +1729,7 @@ LRESULT CALLBACK WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) 
             int boxSize = 34;
             RECT box = { rc.left + (bw - boxSize) / 2, rc.top + 15, rc.left + (bw - boxSize) / 2 + boxSize, rc.top + 15 + boxSize };
             
-            HFONT hFontSet = CreateFont(22, 9, 0, 0, FW_HEAVY, FALSE, FALSE, FALSE, DEFAULT_CHARSET, OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS, DEFAULT_QUALITY, DEFAULT_PITCH | FF_DONTCARE, L"Arial");
+            HFONT hFontSet = MakeFont(22, FW_HEAVY, L"Arial");
             HGDIOBJ oldFont = SelectObject(hdc, hFontSet);
             SetTextColor(hdc, RGB(255, 255, 255));
             SetBkMode(hdc, TRANSPARENT);
