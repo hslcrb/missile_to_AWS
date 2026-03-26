@@ -1,17 +1,112 @@
-# Settings Update Plan
+# main.cpp 코드 최적화 리팩토링 계획
 
-## 변경 사항 개요
-1. **한글 깨짐 현상 수정**: `rc.exe`가 UTF-8로 작성된 [resources.rc](file:///c:/Users/Administrator/Documents/missile_to_AWS/cpp_doom/resources.rc) 내의 한글을 올바르게 컴파일할 수 있도록 코드 페이지 지시어를 추가합니다.
-2. **설정파일 생성 버튼 추가**: 다이얼로그 디자인을 변경하여 '설정파일 생성' 버튼을 하단에 추가합니다. 파일들이 모두 존재할 경우 이 버튼은 비활성화(흐리게) 처리되며, 누락된 파일이 감지될 때만 활성화됩니다.
-3. **파일 상태 안내 메시지 변경**: 누락된 파일이 있을 경우 상황을 알리고, "자동생성 하시겠습니까? 없어도 실행 시 자동으로 생성됩니다." 라는 안내 문구를 추가합니다.
+현재 [main.cpp](file:///d:/missile_to_AWS/cpp_doom/main.cpp) 2,115줄을 **기능 100% 유지**하면서 약 **~1,750줄(약 17% 감소)**으로 줄이는 구조적 리팩토링 계획입니다.
 
-## 세부 변경 내용
-- **resource.h**: `IDC_BTN_CREATE_CONFIG` (예: 2021) 추가.
-- **resources.rc**:
-  - 최상단에 `#pragma code_page(65001)` 추가하여 UTF-8 인코딩 명시.
-  - `IDD_SETTINGS_DIALOG` 하단 영역 넓이를 살짝 조정하거나 여백에 `PUSHBUTTON` 추가.
-- **main.cpp**:
-  - `WM_INITDIALOG`: `credentials.json`, `config.yaml`, [_mta.json](file:///c:/Users/Administrator/Documents/missile_to_AWS/cpp_doom/AWSCleaner_mta.json) 파일의 누락 개수를 카운트. 
-  - 상태 문자열(`statusText`) 최하단에 자동 생성 안내 문구 결합.
-  - 누락 파일 갯수가 1개 이상이면 `EnableWindow(GetDlgItem(hwndDlg, IDC_BTN_CREATE_CONFIG), TRUE)`, 0개이면 `FALSE` 적용.
-  - `WM_COMMAND`에서 `IDC_BTN_CREATE_CONFIG` 클릭 시, [SaveFiles(GetParent(hwndDlg))](file:///c:/Users/Administrator/Documents/missile_to_AWS/cpp_doom/main.cpp#722-811) 등을 간접 활용하거나 빈 기본 파일을 생성하는 보조 함수 호출 후 텍스트/상태 갱신.
+## 변경 규칙
+- 새로운 기능 추가 없음. 순수 구조 개선만.
+- 각 Phase마다 빌드 성공 확인 후 커밋.
+- [resource_list.h](file:///d:/missile_to_AWS/cpp_doom/resource_list.h), [resource.h](file:///d:/missile_to_AWS/cpp_doom/resource.h), [resources.rc](file:///d:/missile_to_AWS/cpp_doom/resources.rc)는 변경하지 않음.
+
+---
+
+## Proposed Changes
+
+### Phase 1 — DrawStyledButton 헬퍼 함수 도입 (~290줄 감소)
+
+#### [MODIFY] [main.cpp](file:///d:/missile_to_AWS/cpp_doom/main.cpp)
+
+현재 WM_DRAWITEM 내의 각 커스텀 버튼(`ID_BTN_SETTINGS`, `ID_CHK_SELECT_ALL`, `ID_BTN_CANCEL`, `ID_BTN_ISSUES`, `ID_BTN_AWS_CONSOLE`, 리전 체크박스)이 모두 유사한 구조로 `FillRect`, `CreatePen`, `RoundRect`, `SelectObject`, `DeleteObject`, `SetTextColor`, `DrawText`를 반복하고 있다.
+
+**추가할 헬퍼 함수:**
+
+```cpp
+// 스타일 정의
+struct BtnStyle {
+    COLORREF bg;       // 배경색
+    COLORREF text;     // 텍스트색
+    COLORREF border;   // 테두리색
+    int cornerRadius;  // RoundRect 반경 (0=Rectangle)
+    bool bold;
+};
+
+// 단일 헬퍼로 모든 커스텀 버튼 렌더링
+static void DrawStyledButton(HDC hdc, const RECT& rc, 
+                             const BtnStyle& style,
+                             const wchar_t* topText,   // 아이콘/큰 텍스트
+                             const wchar_t* bottomText, // 하단 소 텍스트 (NULL 가능)
+                             HFONT hTopFont, HFONT hBotFont);
+```
+
+**영향 범위:** `WM_DRAWITEM` 케이스 내 5개 블록, 약 470줄 → 약 180줄
+
+---
+
+### Phase 2 — CreateFont 팩토리 함수 (~25줄 감소)
+
+#### [MODIFY] [main.cpp](file:///d:/missile_to_AWS/cpp_doom/main.cpp)
+
+현재 WM_CREATE와 SettingsDlgProc에 `CreateFont(크기, 0, 0, 0, 굵기, FALSE, FALSE, FALSE, DEFAULT_CHARSET, OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS, DEFAULT_QUALITY, DEFAULT_PITCH | FF_DONTCARE, L"Noto Sans KR")` 패턴이 7회 반복된다.
+
+**추가할 인라인 헬퍼:**
+```cpp
+inline HFONT MakeFont(int size, int weight = FW_NORMAL, 
+                      const wchar_t* face = L"Noto Sans KR") {
+    return CreateFont(size, 0, 0, 0, weight, FALSE, FALSE, FALSE,
+        DEFAULT_CHARSET, OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS,
+        DEFAULT_QUALITY, DEFAULT_PITCH | FF_DONTCARE, face);
+}
+```
+
+**사용 예:**
+```cpp
+// Before (3줄 × 7회)
+g_hFontBold = CreateFont(18, 0, 0, 0, FW_BOLD, FALSE, FALSE, FALSE, ...);
+// After (1줄 × 7회)
+g_hFontBold = MakeFont(18, FW_BOLD);
+```
+
+---
+
+### Phase 3 — SaveFiles JSON 쓰기 패턴 정리 (~20줄 감소)
+
+#### [MODIFY] [main.cpp](file:///d:/missile_to_AWS/cpp_doom/main.cpp)
+
+현재 [SaveFiles()](file:///d:/missile_to_AWS/cpp_doom/main.cpp#113-114)에서 3개 파일(`credentials.json`, `config.yaml`, [_mta.json](file:///d:/missile_to_AWS/cpp_doom/AWSCleaner_mta.json))을 각각 `std::wofstream`으로 열고 닫는 패턴이 3회 반복된다.
+
+**개선:** 람다 `auto writeFile = [](path, content)` 또는 별도 `WriteUTF8File()` 헬퍼로 묶어 중복 제거.
+
+---
+
+### Phase 4 — 중복 include 제거 및 기타 정리 (~5줄 감소)
+
+#### [MODIFY] [main.cpp](file:///d:/missile_to_AWS/cpp_doom/main.cpp)
+
+- **라인 36**: `#include "resource.h"` 중복 선언 제거 (라인 20에 이미 포함)
+- 빈 [if](file:///d:/missile_to_AWS/cpp_doom/main.cpp#549-578) 블록 정리 (WM_TIMER의 ComboBox 포커스 분기 등)
+- `std::wstring` 연결 체인을 `wostringstream`으로 교체 (런타임 임시 객체 감소)
+
+---
+
+## 예상 결과
+
+| 항목 | 현재 | 변경 후 |
+|------|------|---------|
+| [main.cpp](file:///d:/missile_to_AWS/cpp_doom/main.cpp) 총 줄 수 | 2,115줄 | ~1,750줄 |
+| 줄 감소량 | — | **~365줄 (17%)** |
+| 전체 소스 합계 | 2,624줄 | ~2,259줄 |
+| 기능 변경 | — | **없음** |
+| 빌드 경고 | C4312 1건 | 동일 또는 감소 |
+
+---
+
+## Verification Plan
+
+### Automated Tests
+- 각 Phase 후 [build.bat](file:///d:/missile_to_AWS/cpp_doom/build.bat) 실행, **Exit code 0** 확인
+- 빌드 경고 수가 증가하지 않는지 확인
+
+### Manual Verification
+- NUKE 버튼 클릭 후 카운트다운 및 스피너 정상 동작 확인
+- 설정 창 열기/닫기 크래시 없음 확인
+- 리전 체크박스 선택 및 저장 정상 동작 확인
+- 커스텀 버튼(SAVE, SELECT ALL, SETTINGS) 렌더링 외관 변화 없음 확인
