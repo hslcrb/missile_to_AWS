@@ -1,112 +1,132 @@
-# main.cpp 코드 최적화 리팩토링 계획
+# 디렉토리 구조 재배치 계획
 
-현재 [main.cpp](file:///d:/missile_to_AWS/cpp_doom/main.cpp) 2,115줄을 **기능 100% 유지**하면서 약 **~1,750줄(약 17% 감소)**으로 줄이는 구조적 리팩토링 계획입니다.
+전수실태 보고서 기반으로 `d:\missile_to_AWS` 프로젝트의 파일/폴더를 체계적으로 재배치하는 계획입니다.
 
-## 변경 규칙
-- 새로운 기능 추가 없음. 순수 구조 개선만.
-- 각 Phase마다 빌드 성공 확인 후 커밋.
-- [resource_list.h](file:///d:/missile_to_AWS/cpp_doom/resource_list.h), [resource.h](file:///d:/missile_to_AWS/cpp_doom/resource.h), [resources.rc](file:///d:/missile_to_AWS/cpp_doom/resources.rc)는 변경하지 않음.
+## User Review Required
+
+> [!WARNING]
+> 이 계획에는 파일 **삭제** 작업이 포함되어 있습니다. 실행 전 반드시 확인해 주세요.  
+> 릴리즈 ZIP 파일은 이동 전 원본 위치를 Git에서 제거하고 `releases/`에 재추가합니다.
 
 ---
 
 ## Proposed Changes
 
-### Phase 1 — DrawStyledButton 헬퍼 함수 도입 (~290줄 감소)
+### Phase 1 — 임시/불필요 파일 삭제
 
-#### [MODIFY] [main.cpp](file:///d:/missile_to_AWS/cpp_doom/main.cpp)
+#### [DELETE] `d:\missile_to_AWS\ESDomain`
+- 내용 없는 정체불명 항목.
 
-현재 WM_DRAWITEM 내의 각 커스텀 버튼(`ID_BTN_SETTINGS`, `ID_CHK_SELECT_ALL`, `ID_BTN_CANCEL`, `ID_BTN_ISSUES`, `ID_BTN_AWS_CONSOLE`, 리전 체크박스)이 모두 유사한 구조로 `FillRect`, `CreatePen`, `RoundRect`, `SelectObject`, `DeleteObject`, `SetTextColor`, `DrawText`를 반복하고 있다.
+#### [DELETE] `d:\missile_to_AWS\cpp_doom\RCa11096`
+- RC 컴파일러 임시 잔재 파일.
 
-**추가할 헬퍼 함수:**
+#### [DELETE] `d:\missile_to_AWS\cpp_doom\fav.txt`
+- 개발 중 생성된 임시 즐겨찾기 파일. 코드는 `g_favorites` 구조체에서 관리됨.
 
-```cpp
-// 스타일 정의
-struct BtnStyle {
-    COLORREF bg;       // 배경색
-    COLORREF text;     // 텍스트색
-    COLORREF border;   // 테두리색
-    int cornerRadius;  // RoundRect 반경 (0=Rectangle)
-    bool bold;
-};
+#### [DELETE] `d:\missile_to_AWS\cpp_doom\out.txt`
+- 임시 출력 파일.
 
-// 단일 헬퍼로 모든 커스텀 버튼 렌더링
-static void DrawStyledButton(HDC hdc, const RECT& rc, 
-                             const BtnStyle& style,
-                             const wchar_t* topText,   // 아이콘/큰 텍스트
-                             const wchar_t* bottomText, // 하단 소 텍스트 (NULL 가능)
-                             HFONT hTopFont, HFONT hBotFont);
+#### [DELETE] `d:\missile_to_AWS\cpp_doom\build_output.txt`
+- 빌드 로그 임시 파일.
+
+#### [DELETE] `d:\missile_to_AWS\cpp_doom\20260319thu_Gamma-Realease - 복사본.zip`
+- 원본 `20260319thu_Gamma-Realease.zip`과 완전히 동일한 중복 파일 (32MB).
+
+---
+
+### Phase 2 — 개발 도구 스크립트 격리
+
+#### [NEW] `d:\missile_to_AWS\cpp_doom\tools\` 폴더 생성
+
+#### [MODIFY] 스크립트 3개를 `tools\`로 이동
+- `gen_cpp.py` → `cpp_doom\tools\gen_cpp.py`
+- `gen_hashes.py` → `cpp_doom\tools\gen_hashes.py`
+- `gen_tags.py` → `cpp_doom\tools\gen_tags.py`
+
+---
+
+### Phase 3 — 릴리즈 아카이브 격리
+
+#### [NEW] `d:\missile_to_AWS\releases\` 폴더 생성
+
+#### [MODIFY] ZIP 파일 2개를 `releases\`로 이동
+- `20260318wed_Alpha-Realease.zip` → `releases\Alpha-20260318.zip`
+- `20260319thu_Gamma-Realease.zip` → `releases\Gamma-20260319.zip`
+
+---
+
+### Phase 4 — `.gitignore` 강화
+
+#### [MODIFY] [.gitignore](file:///d:/missile_to_AWS/.gitignore)
+
+현재 95B의 최소 `.gitignore`에 아래 항목들을 추가:
+
+```gitignore
+# 빌드 산출물
+cpp_doom/*.exe
+cpp_doom/*.obj
+cpp_doom/*.res
+
+# 런타임 설정 (보안 민감)
+cpp_doom/AWSCleaner_mta.json
+cpp_doom/external/
+
+# 임시 파일
+cpp_doom/fav.txt
+cpp_doom/out.txt
+cpp_doom/build_output.txt
+cpp_doom/RCa*
+
+# 대용량 페이로드 (Git LFS 또는 제외 권장)
+# cpp_doom/data/
 ```
 
-**영향 범위:** `WM_DRAWITEM` 케이스 내 5개 블록, 약 470줄 → 약 180줄
+> [!IMPORTANT]
+> `external/credentials.json`은 평문 AWS Access Key를 포함합니다.  
+> Git 이력에 이미 커밋된 경우 `git filter-branch` 또는 BFG로 이력 정리 필요.
 
 ---
 
-### Phase 2 — CreateFont 팩토리 함수 (~25줄 감소)
+## 최종 목표 구조
 
-#### [MODIFY] [main.cpp](file:///d:/missile_to_AWS/cpp_doom/main.cpp)
-
-현재 WM_CREATE와 SettingsDlgProc에 `CreateFont(크기, 0, 0, 0, 굵기, FALSE, FALSE, FALSE, DEFAULT_CHARSET, OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS, DEFAULT_QUALITY, DEFAULT_PITCH | FF_DONTCARE, L"Noto Sans KR")` 패턴이 7회 반복된다.
-
-**추가할 인라인 헬퍼:**
-```cpp
-inline HFONT MakeFont(int size, int weight = FW_NORMAL, 
-                      const wchar_t* face = L"Noto Sans KR") {
-    return CreateFont(size, 0, 0, 0, weight, FALSE, FALSE, FALSE,
-        DEFAULT_CHARSET, OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS,
-        DEFAULT_QUALITY, DEFAULT_PITCH | FF_DONTCARE, face);
-}
 ```
-
-**사용 예:**
-```cpp
-// Before (3줄 × 7회)
-g_hFontBold = CreateFont(18, 0, 0, 0, FW_BOLD, FALSE, FALSE, FALSE, ...);
-// After (1줄 × 7회)
-g_hFontBold = MakeFont(18, FW_BOLD);
+d:\missile_to_AWS\
+├── .gitignore         (강화됨)
+├── LICENSE
+├── README.md
+├── CHANGELOG.md
+├── CONTRIBUTING.md
+├── USAGE.md
+├── binary_loading_logic.md
+│
+├── releases\          [신규]
+│   ├── Alpha-20260318.zip
+│   └── Gamma-20260319.zip
+│
+└── cpp_doom\
+    ├── main.cpp
+    ├── resource.h
+    ├── resource_list.h
+    ├── resources.rc
+    ├── build.bat
+    ├── tools\         [신규]
+    │   ├── gen_cpp.py
+    │   ├── gen_hashes.py
+    │   └── gen_tags.py
+    ├── assets\
+    ├── data\
+    └── external\      (런타임 생성, .gitignored)
 ```
-
----
-
-### Phase 3 — SaveFiles JSON 쓰기 패턴 정리 (~20줄 감소)
-
-#### [MODIFY] [main.cpp](file:///d:/missile_to_AWS/cpp_doom/main.cpp)
-
-현재 [SaveFiles()](file:///d:/missile_to_AWS/cpp_doom/main.cpp#113-114)에서 3개 파일(`credentials.json`, `config.yaml`, [_mta.json](file:///d:/missile_to_AWS/cpp_doom/AWSCleaner_mta.json))을 각각 `std::wofstream`으로 열고 닫는 패턴이 3회 반복된다.
-
-**개선:** 람다 `auto writeFile = [](path, content)` 또는 별도 `WriteUTF8File()` 헬퍼로 묶어 중복 제거.
-
----
-
-### Phase 4 — 중복 include 제거 및 기타 정리 (~5줄 감소)
-
-#### [MODIFY] [main.cpp](file:///d:/missile_to_AWS/cpp_doom/main.cpp)
-
-- **라인 36**: `#include "resource.h"` 중복 선언 제거 (라인 20에 이미 포함)
-- 빈 [if](file:///d:/missile_to_AWS/cpp_doom/main.cpp#549-578) 블록 정리 (WM_TIMER의 ComboBox 포커스 분기 등)
-- `std::wstring` 연결 체인을 `wostringstream`으로 교체 (런타임 임시 객체 감소)
-
----
-
-## 예상 결과
-
-| 항목 | 현재 | 변경 후 |
-|------|------|---------|
-| [main.cpp](file:///d:/missile_to_AWS/cpp_doom/main.cpp) 총 줄 수 | 2,115줄 | ~1,750줄 |
-| 줄 감소량 | — | **~365줄 (17%)** |
-| 전체 소스 합계 | 2,624줄 | ~2,259줄 |
-| 기능 변경 | — | **없음** |
-| 빌드 경고 | C4312 1건 | 동일 또는 감소 |
 
 ---
 
 ## Verification Plan
 
 ### Automated Tests
-- 각 Phase 후 [build.bat](file:///d:/missile_to_AWS/cpp_doom/build.bat) 실행, **Exit code 0** 확인
-- 빌드 경고 수가 증가하지 않는지 확인
+- Phase 1~3 완료 후 `build.bat` 실행 → Exit code 0 확인
+- `gen_*.py` 경로가 바뀌었으므로 스크립트 내 상대 경로 참조 여부 확인
 
 ### Manual Verification
-- NUKE 버튼 클릭 후 카운트다운 및 스피너 정상 동작 확인
-- 설정 창 열기/닫기 크래시 없음 확인
-- 리전 체크박스 선택 및 저장 정상 동작 확인
-- 커스텀 버튼(SAVE, SELECT ALL, SETTINGS) 렌더링 외관 변화 없음 확인
+- `resources.rc`의 `assets/` 경로 참조가 변경 없이 정상인지 확인
+- `.gitignore`에 `external/`이 추가된 후 `git status`로 추적 제외 여부 확인
+- `git log --oneline -5`로 커밋 연속성 확인
